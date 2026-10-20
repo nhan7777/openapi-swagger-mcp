@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=../config.schema.json
+#
+# One file = one environment. For UAT, copy this file to config.uat.yaml and add a second MCP entry.
+# Relative paths are resolved against this file's directory.
+# Validate without starting: openapi-swagger-mcp --config config.example.yaml --check
+
+services:
+  # Simplest case: spec URL, base URL, token from an environment variable.
+  orders:
+    baseUrl: http://localhost:8080/api/v1          # full prefix; spec servers/host are never used
+    spec: http://localhost:8080/v3/api-docs        # URL or file path
+    auth:
+      bearer:
+        token: { fromEnv: ORDERS_TOKEN }           # name of the env var, not the token itself
+
+  # Grant-code login with a rotating refresh token. Call `authenticate` once; a later 401 runs `refresh`
+  # in the background. The failed request is returned as-is and never replayed. The refresh token is
+  # captured but only the access token, CSRF header and cookies are sent on business requests.
+  accounts:
+    baseUrl: https://accounts.dev.example.test
+    spec: https://accounts.dev.example.test/v3/api-docs
+    auth:
+      bearer: { token: { fromCredential: accessToken } }
+      apiKey: { header: X-CSRF-Token, value: { fromCredential: csrf } }
+      cookies: true
+    credentials:
+      grantCode: { fromEnv: ACCOUNTS_GRANT_CODE }
+    authentication:
+      request:
+        operation: POST /session/exchange
+        body: { json: { grantCode: { fromCredential: grantCode } } }
+      capture:
+        credentials:
+          accessToken: { bodyPointer: /session/accessToken }   # JSON Pointer into the response body
+          refreshToken: { bodyPointer: /session/refreshToken }
+          csrf: { header: X-CSRF-Token }
+        cookies: true
+    refresh:
+      request:
+        operation: POST /session/refresh
+        body: { form: { refresh_token: { fromCredential: refreshToken } } }
+      capture:
+        credentials:
+          accessToken: { bodyPointer: /access_token }
+          refreshToken: { bodyPointer: /refresh_token }        # listed = rotated
+
+  # API key from a local secrets file, spec from disk, private CA.
+  catalog:
+    baseUrl: https://catalog.dev.example.test
+    spec: ./specs/catalog.yaml
+    auth:
+      apiKey:
+        header: X-API-Key
+        value: { fromFile: ./secrets.json, pointer: /catalog }   # keep out of git, chmod 600
+    tls:
+      caFile: ./certs/dev-ca.pem
+
+  # Quick local test only: inline secret. The server warns about it on every start.
+  # sandbox:
+  #   baseUrl: http://127.0.0.1:3000
+  #   spec: http://127.0.0.1:3000/openapi.json
+  #   auth:
+  #     bearer: { token: eyJ... }
+
+# Credentials shared by several services (or several accounts) live in named profiles:
+# profiles:
+#   qa:
+#     auth: { bearer: { token: { fromEnv: QA_TOKEN } } }
+# and a service selects them with `auth: { profile: qa }` or `auth: { profiles: [qa, admin], defaultProfile: qa }`.
+
+files:
+  uploadRoots: [./fixtures]
+  exportRoots: [./exports]
+
+encodedFields:
+  - { service: orders, pointer: /data/*/thumbnail, encoding: base64, mediaType: image/png }

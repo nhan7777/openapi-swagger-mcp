@@ -1,0 +1,59 @@
+{
+  "name": "@nhan7777/openapi-swagger-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server that lets agents discover, integrate and test configured Swagger/OpenAPI APIs in dev/UAT.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "bin": {
+    "openapi-swagger-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "examples",
+    "config.schema.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests/tsconfig.json",
+    "test": "vitest run",
+    "test:integration": "vitest run tests/integration",
+    "smoke": "node tests/smoke.mjs",
+    "gen:notices": "node scripts/gen-notices.mjs",
+    "prepack": "node scripts/clean-dist.mjs && npm run build && npm run gen:schema && npm run gen:notices",
+    "gen:schema": "node scripts/gen-schema.mjs",
+    "verify:package": "node scripts/verify-package.mjs"
+  },
+  "dependencies": {
+    "@apidevtools/openapi-schemas": "2.1.0",
+    "@apidevtools/swagger-parser": "13.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "ajv": "8.20.0",
+    "ajv-draft-04": "1.0.0",
+    "ajv-formats": "3.0.1",
+    "tough-cookie": "6.0.2",
+    "undici": "8.12.2",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  },
+  "keywords": [
+    "mcp",
+    "openapi",
+    "swagger",
+    "api-testing",
+    "model-context-protocol"
+  ]
+}
