@@ -290,7 +290,7 @@ export class ArtifactStore {
     const dest = path.resolve(this.cfg.configDir, o.destination);
     let parentReal: string;
     try {
-      parentReal = await fsp.realpath(path.dirname(dest));
+      parentReal = fs.realpathSync.native(path.dirname(dest));
     } catch {
       throw new ToolError('EXPORT_NOT_ALLOWED', 'destination directory does not exist');
     }

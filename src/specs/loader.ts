@@ -126,7 +126,7 @@ export class SpecLoader {
     const readFileGuarded = (p: string, parent?: string): Buffer => {
       let real: string;
       try {
-        real = fs.realpathSync(p);
+        real = fs.realpathSync.native(p);
       } catch {
         throw new ToolError('SPEC_REF_UNRESOLVED', `referenced file not found: ${path.basename(p)}`);
       }
@@ -279,7 +279,7 @@ function displayUri(identity: string): string {
 }
 function safeReal(p: string): string {
   try {
-    return fs.realpathSync(p);
+    return fs.realpathSync.native(p);
   } catch {
     return path.resolve(p);
   }

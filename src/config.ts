@@ -489,7 +489,7 @@ export function loadConfig(configPathArg: string): AppConfig {
 
 export function safeRealpath(p: string): string {
   try {
-    return fs.realpathSync(p);
+    return fs.realpathSync.native(p);
   } catch {
     return path.resolve(p);
   }

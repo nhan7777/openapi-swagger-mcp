@@ -190,7 +190,7 @@ class UploadGuard {
     const resolved = path.resolve(this.cfg.configDir, p);
     let real: string;
     try {
-      real = fs.realpathSync(resolved);
+      real = fs.realpathSync.native(resolved);
     } catch {
       throw new ToolError('UPLOAD_FILE_NOT_FOUND', `upload file not found: ${path.basename(p)}`);
     }
