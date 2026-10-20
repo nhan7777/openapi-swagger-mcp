@@ -177,7 +177,7 @@ try {
   // ---- keep the verified candidate ----------------------------------------------------------------
   const releaseDir = path.join(root, '.release');
   fs.mkdirSync(releaseDir, { recursive: true });
-  const dest = path.join(releaseDir, 'nhan7777-openapi-swagger-mcp-0.1.0.tgz');
+  const dest = path.join(releaseDir, `nhan7777-openapi-swagger-mcp-${info.version}.tgz`);
   const digest = sha256(tgzBytes);
   const companion = `${dest}.sha256`;
   const companionText = `${digest}  ${path.basename(dest)}\n`;

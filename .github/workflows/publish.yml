@@ -1,0 +1,53 @@
+name: Publish
+
+# Publishes to npm through trusted publishing (OIDC). No npm token is stored in this repository.
+# One-time setup on npmjs.com: package Settings -> Trusted publishing -> GitHub Actions ->
+# user nhan7777, repository openapi-swagger-mcp, workflow filename publish.yml (case-sensitive).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # required for the npm OIDC exchange
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # never use caching in release builds
+      - name: Tag must match package.json and be reachable from main
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version v$version" >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "tag commit is not on main" >&2
+            exit 1
+          }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run gen:schema
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run smoke
+      - run: npm run verify:package
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Publish the verified tarball
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          name="nhan7777-openapi-swagger-mcp-${version}.tgz"
+          (cd .release && sha256sum -c "${name}.sha256")
+          npm publish ".release/${name}" --ignore-scripts --access public --tag latest

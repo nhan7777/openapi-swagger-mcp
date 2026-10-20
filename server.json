@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.nhan7777/openapi-swagger-mcp",
+  "title": "OpenAPI Swagger MCP",
+  "description": "Discover Swagger/OpenAPI operations and call configured dev/UAT APIs through 10 fixed tools.",
+  "repository": {
+    "url": "https://github.com/nhan7777/openapi-swagger-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/nhan7777/openapi-swagger-mcp#readme",
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@nhan7777/openapi-swagger-mcp",
+      "version": "0.1.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--config",
+          "description": "Absolute path to the YAML or JSON config file that lists the APIs to expose.",
+          "format": "filepath",
+          "isRequired": true
+        }
+      ]
+    }
+  ]
+}

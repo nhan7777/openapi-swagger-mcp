@@ -39,7 +39,7 @@ The URLs above are examples. They only work if your own API is running there, so
 ### 2. Check the config
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.0 --config /absolute/path/config.dev.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.1 --config /absolute/path/config.dev.yaml --check
 ```
 
 `ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
@@ -55,7 +55,7 @@ For clients that use an `mcpServers` configuration, add this to the **client's M
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.0",
+        "@nhan7777/openapi-swagger-mcp@0.1.1",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -120,7 +120,7 @@ The server reads `ORDERS_TOKEN` from **its own process environment**. That is no
   "mcpServers": {
     "api-dev": {
       "command": "npx",
-      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.0", "--config", "/absolute/path/config.dev.yaml"],
+      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.1", "--config", "/absolute/path/config.dev.yaml"],
       "env": { "ORDERS_TOKEN": "replace-with-your-dev-token" }
     }
   }
@@ -135,7 +135,7 @@ The `npx` commands above download the pinned version on first use. Alternatives:
 
 ```bash
 # Global install; the command is then `openapi-swagger-mcp`
-npm install -g @nhan7777/openapi-swagger-mcp@0.1.0
+npm install -g @nhan7777/openapi-swagger-mcp@0.1.1
 
 # From a source checkout (see Development)
 npm ci && npm run build
@@ -597,7 +597,7 @@ If a response exceeds `responseBytes`, you still get the status and headers, but
 Start with the config check:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.0 --config /absolute/path/config.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.1 --config /absolute/path/config.yaml --check
 ```
 
 The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and `operationsChecked: false`. Each check has a `field`, a `state` (`ok`, `pending` or `error`) and possibly a `code`.
