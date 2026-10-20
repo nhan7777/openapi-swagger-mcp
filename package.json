@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Local MCP server that lets agents discover, integrate and test configured Swagger/OpenAPI APIs in dev/UAT.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nhan7777/openapi-swagger-mcp.git"
+  },
+  "homepage": "https://github.com/nhan7777/openapi-swagger-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/nhan7777/openapi-swagger-mcp/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.19"

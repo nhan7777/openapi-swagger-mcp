@@ -1,62 +1,26 @@
 # openapi-swagger-mcp
 
-Cho AI agent đọc Swagger/OpenAPI, tìm endpoint, xem contract và gọi API thật thông qua MCP. Hỗ trợ **Swagger 2.0, OpenAPI 3.0 và 3.1**.
+A local MCP server that lets an AI agent read Swagger 2.0, OpenAPI 3.0 and OpenAPI 3.1 specs, find operations, inspect their contracts and send real requests to the dev/UAT services you configure.
 
-Bạn khai báo API và cách xác thực trong một file YAML/JSON. Agent sử dụng **10 tool cố định**, không cần tạo một tool riêng cho từng endpoint.
+You describe your APIs and how to authenticate in one YAML or JSON file. The agent works through **ten fixed tools**, so the tool count does not grow with the number of endpoints.
 
-> **Chỉ dùng cho dev/UAT.** Tool có thể gửi POST, PUT, PATCH, DELETE thật. Không có cơ chế tự rollback hoặc chặn thao tác ghi.
+## Before you start
+
+You need:
+
+- **Node.js 22.19 or newer** and npm.
+- An API you can reach, and its Swagger/OpenAPI spec (a URL or a file).
+- An MCP client that can launch a local stdio server.
+
+> **Use this only against dev/UAT services.** The tools send real POST, PUT, PATCH and DELETE requests. There is no rollback and no server-side write gate. A confirmation prompt in your MCP client is the client's feature, not something this server enforces.
 >
-> **Lưu ý về dữ liệu:** tham số tool và kết quả trả về có thể được nhà cung cấp AI lưu trong lịch sử hội thoại. Response không bị che token hay dữ liệu cá nhân. Ưu tiên đọc secret từ biến môi trường/file thay vì dán vào hội thoại.
+> **Think about where your data goes.** Tool arguments and results can be stored in your AI provider's conversation history. Responses are not scrubbed of tokens or personal data. Read secrets from environment variables or files instead of pasting them into the conversation.
 
-## Mục lục
+## Quick start
 
-1. [Chạy nhanh](#1-chạy-nhanh)
-2. [Kết nối với ứng dụng AI](#2-kết-nối-với-ứng-dụng-ai)
-3. [Khai báo một hoặc nhiều API](#3-khai-báo-một-hoặc-nhiều-api)
-4. [Chọn cách xác thực](#4-chọn-cách-xác-thực)
-5. [Đăng nhập và refresh token](#5-đăng-nhập-và-refresh-token)
-6. [Nhiều tài khoản và profile dùng chung](#6-nhiều-tài-khoản-và-profile-dùng-chung)
-7. [Tìm và gọi API](#7-tìm-và-gọi-api)
-8. [OTP/SSO và session riêng](#8-otpsso-và-session-riêng)
-9. [Response lớn, file và base64](#9-response-lớn-file-và-base64)
-10. [Kiểm tra cấu hình và xử lý lỗi](#10-kiểm-tra-cấu-hình-và-xử-lý-lỗi)
-11. [Cấu hình nâng cao](#11-cấu-hình-nâng-cao)
-12. [Danh sách tool](#12-danh-sách-tool)
-13. [Giới hạn và phát triển](#13-giới-hạn-và-phát-triển)
+### 1. Create a config file
 
-## 1. Chạy nhanh
-
-### Bước 1 — Cài và build
-
-Cần **Node.js từ 22.19** và npm. Trong thư mục source của dự án:
-
-```bash
-npm ci
-npm run build
-```
-
-Có thể chạy trực tiếp bằng `node /đường/dẫn/dự/án/dist/cli.js`, không bắt buộc cài global.
-
-Cài thành lệnh trên máy từ npm (tên package có scope `@nhan7777`; lệnh sau khi cài vẫn là `openapi-swagger-mcp`):
-
-```bash
-npm install -g @nhan7777/openapi-swagger-mcp
-```
-
-Hoặc chạy không cần cài: `npx @nhan7777/openapi-swagger-mcp --config /đường/dẫn/config.dev.yaml`.
-
-Không dùng package `openapi-swagger-mcp` (không scope) trên npm: đó là package của người khác, không phải dự án này.
-
-Cài từ source/package local:
-
-```bash
-npm pack
-npm install -g ./nhan7777-openapi-swagger-mcp-0.1.0.tgz
-```
-
-### Bước 2 — Tạo config
-
-Tạo `config.dev.yaml` ở vị trí bạn muốn:
+Save this as `config.dev.yaml`:
 
 ```yaml
 services:
@@ -65,62 +29,58 @@ services:
     spec: http://localhost:8080/v3/api-docs
 ```
 
-- `orders`: tên service để agent chọn khi gọi tool.
-- `baseUrl`: địa chỉ API thực sự nhận request, **gồm cả prefix** như `/api/v1`.
-- `spec`: URL Swagger/OpenAPI hoặc đường dẫn file như `./openapi.json`.
-- Chưa khai báo `auth` nghĩa là gọi anonymous.
+- `orders` is the service name the agent uses in tool calls.
+- `baseUrl` is where requests are really sent, **including any prefix** such as `/api/v1`.
+- `spec` is the Swagger/OpenAPI URL, or a file path such as `./openapi.json`.
+- With no `auth` block, requests are anonymous.
 
-Ví dụ trên là địa chỉ minh họa. Thay bằng API dev/UAT của bạn.
+The URLs above are examples. They only work if your own API is running there, so replace them with your dev/UAT addresses.
 
-### Bước 3 — Kiểm tra offline
+### 2. Check the config
 
 ```bash
-node /đường/dẫn/dự/án/dist/cli.js --config /đường/dẫn/config.dev.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.0 --config /absolute/path/config.dev.yaml --check
 ```
 
-`ok: true` nghĩa là kiểm tra tĩnh đã đạt; **không có nghĩa Swagger từ xa hay endpoint đã được kiểm tra**. Lệnh này không gọi mạng, không đăng nhập và không tạo thư mục artifact.
+`ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
 
-### Bước 4 — Thêm MCP vào ứng dụng AI
+### 3. Add the server to your MCP client
 
-Dùng cấu hình ở phần tiếp theo. Sau khi kết nối, thử yêu cầu:
-
-> Liệt kê các API đã cấu hình. Tìm endpoint xem chi tiết đơn hàng của service orders, đọc contract rồi đề xuất request. Chưa gửi request cho đến khi tôi cung cấp mã đơn.
-
-## 2. Kết nối với ứng dụng AI
-
-Với client hỗ trợ cấu hình `mcpServers`, dùng mẫu sau trong **file cấu hình MCP của client**, không phải file YAML của server:
+For clients that use an `mcpServers` configuration, add this to the **client's MCP config file** (not to the YAML file above):
 
 ```json
 {
   "mcpServers": {
     "api-dev": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/absolute/path/openapi-swagger-mcp/dist/cli.js",
+        "-y",
+        "@nhan7777/openapi-swagger-mcp@0.1.0",
         "--config",
         "/absolute/path/config.dev.yaml"
-      ],
-      "env": {
-        "ORDERS_TOKEN": "replace-with-your-dev-token"
-      }
+      ]
     }
   }
 }
 ```
 
-Nếu đã cài global, có thể dùng `"command": "openapi-swagger-mcp"` với `"args": ["--config", "/absolute/path/config.dev.yaml"]`. Với npx: `"command": "npx"`, `"args": ["-y", "@nhan7777/openapi-swagger-mcp", "--config", "/absolute/path/config.dev.yaml"]`.
+The file name and location depend on your client. If your client has a form for command, arguments and environment variables, enter the same values there. Not every client uses the `mcpServers` format, so adapt the snippet if yours differs. Use absolute paths so the server does not depend on the directory the client starts in.
 
-Tên file/vị trí cấu hình MCP tùy client. Nếu client dùng giao diện nhập command/args/env, nhập các trường tương ứng. Nên dùng đường dẫn tuyệt đối để không phụ thuộc thư mục client khởi động.
+This server uses **stdio**: the client starts the process and talks to it over stdin/stdout. There is no web UI and no HTTP port. stdout is reserved for MCP traffic and logs go to stderr. Do not add `--check` to the client entry, because that mode exits after checking.
 
-**Tách dev và UAT:** tạo hai file config và hai MCP entry, ví dụ `api-dev`, `api-uat`. Mỗi process có credential, cookie và artifact riêng. Không có cờ `--env` hay tool chuyển môi trường.
+### 4. Try it
 
-Server dùng **stdio**: client khởi chạy process và giao tiếp qua stdin/stdout. Chạy CLI thường không mở trang web hay HTTP port. stdout dành cho MCP; log ở stderr. Không thêm `--check` vào MCP entry vì chế độ đó kiểm tra xong sẽ thoát.
+Once the client is connected, ask:
 
-## 3. Khai báo một hoặc nhiều API
+> List the configured APIs. Find the operation that returns order details in the orders service, read its contract, and propose a request. Do not send anything until I give you an order ID.
+
+## Configure your APIs
+
+A fuller example with two services:
 
 ```yaml
-# yaml-language-server: $schema=/absolute/path/openapi-swagger-mcp/config.schema.json
-version: 1                 # có thể bỏ
+# yaml-language-server: $schema=/absolute/path/to/config.schema.json
+version: 1                 # optional
 services:
   orders:
     baseUrl: https://orders.dev.example.test/api/v1
@@ -133,15 +93,183 @@ services:
     spec: ./specs/catalog.yaml
 ```
 
-YAML (`.yaml`, `.yml`) và JSON đều được hỗ trợ. Với JSON, thêm `"$schema": "/absolute/path/config.schema.json"` để editor gợi ý cấu hình.
+YAML (`.yaml`, `.yml`) and JSON are both supported. For JSON, add `"$schema": "/absolute/path/to/config.schema.json"` so your editor can suggest keys. See the [complete example config](examples/config.example.yaml) and the [JSON Schema](config.schema.json).
 
-Các đường dẫn cấu hình tương đối được tính từ **thư mục chứa config**, không phải thư mục chạy lệnh. Có thể tham khảo [config đầy đủ](examples/config.example.yaml) và [JSON Schema](config.schema.json).
+Key rules:
 
-**Quan trọng về URL:** operation `GET /orders/{id}` với `baseUrl: https://host/api/v1` sẽ gọi `https://host/api/v1/orders/{id}`. Server không lấy địa chỉ gọi API từ `servers`, `host` hoặc `basePath` trong spec. `baseUrl` không được chứa username/password, query hay fragment.
+- Relative paths in the config resolve from the **directory that contains the config file**, not from where you run the command.
+- **The URL comes from `baseUrl`.** The operation `GET /orders/{id}` with `baseUrl: https://host/api/v1` calls `https://host/api/v1/orders/{id}`. The server ignores `servers`, `host` and `basePath` in the spec. `baseUrl` must not contain a username, password, query or fragment.
+- **One environment per process.** For dev and UAT, create two config files and two MCP entries (for example `api-dev` and `api-uat`). Each process has its own credentials, cookies and artifacts. There is no `--env` flag and no tool for switching environments.
+- A config change needs a restart of the MCP process. `refresh_specs` only reloads specs.
 
-## 4. Chọn cách xác thực
+### Pass a token from the environment
 
-### 4.1. Có sẵn Bearer token
+```yaml
+services:
+  orders:
+    baseUrl: https://orders.dev.example.test/api/v1
+    spec: https://orders.dev.example.test/v3/api-docs
+    auth:
+      bearer: { token: { fromEnv: ORDERS_TOKEN } }
+```
+
+The server reads `ORDERS_TOKEN` from **its own process environment**. That is not the same as the environment of the shell where you tested the command: set it in the `env` field of the client entry, or wherever your client launches the process.
+
+```json
+{
+  "mcpServers": {
+    "api-dev": {
+      "command": "npx",
+      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.0", "--config", "/absolute/path/config.dev.yaml"],
+      "env": { "ORDERS_TOKEN": "replace-with-your-dev-token" }
+    }
+  }
+}
+```
+
+The server does not load `.env` files. Changing the environment of another process does not change the environment of a running MCP server; restart it with the new values.
+
+### Other ways to install
+
+The `npx` commands above download the pinned version on first use. Alternatives:
+
+```bash
+# Global install; the command is then `openapi-swagger-mcp`
+npm install -g @nhan7777/openapi-swagger-mcp@0.1.0
+
+# From a source checkout (see Development)
+npm ci && npm run build
+node /absolute/path/to/openapi-swagger-mcp/dist/cli.js --config /absolute/path/config.dev.yaml
+```
+
+Do not install the unscoped npm package `openapi-swagger-mcp`. It belongs to someone else and is a different project. This package is `@nhan7777/openapi-swagger-mcp`.
+
+## Discover and call an operation
+
+### The normal flow
+
+| Step | Tool | Example arguments |
+|---|---|---|
+| See services and revisions | `list_apis` | `{}` |
+| Find an operation | `search_operations` | `{"service":"orders","query":"order detail","limit":5}` |
+| Read its contract | `get_operation_schema` | `{"service":"orders","operation":"GET /orders/{id}","revision":"<revision-you-just-received>"}` |
+| Send the request | `invoke_operation` | See below |
+
+A complete `invoke_operation` call:
+
+```json
+{
+  "service": "orders",
+  "operation": "GET /orders/{id}",
+  "revision": "<revision-you-just-received>",
+  "input": {
+    "path": { "id": "demo-123" },
+    "query": { "includeItems": true },
+    "headers": { "X-Request-ID": "demo-request" }
+  }
+}
+```
+
+`operation` is the key returned by search, usually `METHOD /path`. It is not the `operationId`. `revision` is the spec revision, which stops you calling an operation based on an outdated contract. When the spec changes, call `refresh_specs` with `{"service":"orders"}`, then search or read the contract again to get the new revision. A failed refresh keeps the last valid snapshot.
+
+`search_operations` accepts `service`, `method`, `tag`, `includeDeprecated`, `limit` and `cursor`. Pass `nextCursor` with the same query to get the next page. Changing the query or the revision invalidates an old cursor.
+
+### Request bodies
+
+The snippets below are **fragments** that go inside `input`. They are not complete tool calls. A request has at most one body type.
+
+Note the difference from auth recipes: `invoke_operation.input.body` uses the `json.value` and `form.fields` wrappers, while a recipe `body` uses plain `json` and `form` (see [Login and refresh](#login-and-refresh)).
+
+JSON:
+
+```json
+{ "body": { "json": { "value": { "name": "demo", "quantity": 2 } } } }
+```
+
+Form (`application/x-www-form-urlencoded`):
+
+```json
+{ "body": { "form": { "fields": { "name": "demo", "tags": ["a", "b"] } } } }
+```
+
+You can set `contentType` inside `json` or `form` to pick one of the media types the operation declares.
+
+For multipart and binary uploads, first allow directories in the config and create them:
+
+```yaml
+files:
+  uploadRoots: [./fixtures]
+  exportRoots: [./exports]
+```
+
+Then pass absolute paths in the tool call.
+
+Multipart:
+
+```json
+{
+  "body": {
+    "multipart": {
+      "fields": { "description": "demo" },
+      "files": [
+        { "field": "document", "path": "/absolute/path/fixtures/demo.pdf", "filename": "demo.pdf", "contentType": "application/pdf" }
+      ]
+    }
+  }
+}
+```
+
+Binary:
+
+```json
+{ "body": { "binary": { "file": "/absolute/path/fixtures/demo.bin", "contentType": "application/octet-stream" } } }
+```
+
+The multipart `files` array may repeat the same `field`. Files outside `uploadRoots`, symlinks that escape a root, and protected files are refused. The media type must match what the operation declares, so read the contract before sending.
+
+### Choosing auth, and negative testing
+
+`invoke_operation.auth` has four modes:
+
+| Mode | Behavior |
+|---|---|
+| `{"mode":"default"}` or no `auth` | Use the service's default auth, or anonymous if it has none |
+| `{"mode":"profile","profileId":"qa"}` | Use a named profile the service allows |
+| `{"mode":"session","sessionId":"<id>"}` | Use an interactive session bound to the same service |
+| `{"mode":"anonymous"}` | Inherit no credentials or cookies. Data you pass explicitly in `input` is still sent |
+
+To test a wrong token, pass your own `input.headers.Authorization`. It overrides the matching credential for that request only, leaves managed credentials untouched, and does not trigger an automatic refresh.
+
+The server **serializes what you give it and does not fix your data**. It adds no defaults, does no type coercion, and does not strip unknown fields or `null`. Omitting the body is different from sending `{"json":{"value":null}}`, which sends the bytes `null`. HTTP 4xx/5xx responses are real results and are not turned into "tool failed validation" errors.
+
+Requests that cannot be sent safely are blocked locally: a missing path parameter, a path escape, CR/LF in a header, a media type the operation does not declare, or an attempt to override headers the transport manages.
+
+### Reading the result
+
+- `sent: false`: the request was not sent. Look at `error.code` and `error.message`.
+- `http.status` and `http.headers`: the actual HTTP outcome.
+- `bodyView`: the part of the response meant for the agent to read.
+- `diagnostics.request` and `diagnostics.response`: spec-based checks, for diagnosis only. They do not replace the HTTP outcome. States are `valid`, `invalid`, `not_available` and `error`.
+- `bodyComplete: false`: the body is partial because of a limit or a stream error. Do not conclude the whole response was valid.
+- `authRecovery`: the state of a background refresh after a 401. It does not mean the request was replayed.
+- Network, TLS and timeout failures do not produce a fake HTTP status. `error.mayHaveBeenSent` says whether the request may already have left the machine. Be careful about retrying write operations.
+
+Redirects are not followed by default. With `followRedirects: true`, only same-origin redirects are followed, within a limit: 303, and POST after 301/302, become GET; 307/308 keep the method and body. Credentials are never forwarded to another origin.
+
+## Authentication
+
+Pick the approach that matches your API:
+
+| You have... | Use |
+|---|---|
+| A ready bearer token, basic credentials, API key or cookies | [Static credentials](#static-credentials) |
+| A login or refresh endpoint to call | [Login and refresh](#login-and-refresh) |
+| Several accounts, or credentials shared by several services | [Multiple accounts and shared profiles](#multiple-accounts-and-shared-profiles) |
+| OTP, SSO, or a token you receive interactively | [OTP, SSO and interactive sessions](#otp-sso-and-interactive-sessions) |
+
+### Static credentials
+
+**Bearer token**
 
 ```yaml
 auth:
@@ -149,9 +277,9 @@ auth:
     token: { fromEnv: ORDERS_TOKEN }
 ```
 
-Server tự thêm `Authorization: Bearer <token>`. Giá trị nguồn chỉ chứa token, không thêm sẵn chữ `Bearer `.
+The server adds `Authorization: Bearer <token>`. The source value holds only the token, without the `Bearer ` prefix.
 
-### 4.2. Basic authentication
+**Basic authentication**
 
 ```yaml
 auth:
@@ -160,9 +288,9 @@ auth:
     password: { fromEnv: API_PASSWORD }
 ```
 
-Username/password được đọc độc lập và mã hóa Basic. Cả hai cũng có thể dùng file hoặc `fromCredential`. Chỉ literal của Basic cho phép chuỗi rỗng.
+Username and password are read independently and Basic-encoded. Both can also come from a file or `fromCredential`. Only a Basic literal may be an empty string.
 
-### 4.3. API key trong header, query hoặc cookie
+**API key in a header, query string or cookie**
 
 ```yaml
 auth:
@@ -171,7 +299,7 @@ auth:
     value: { fromEnv: API_KEY }
 ```
 
-Thay `header` bằng `query` hoặc `cookie` nếu API yêu cầu. Mỗi entry chỉ chọn **một** đích. Có thể dùng danh sách:
+Replace `header` with `query` or `cookie` if your API needs that. Each entry picks **one** destination. You can also use a list and combine methods:
 
 ```yaml
 auth:
@@ -182,41 +310,37 @@ auth:
   cookies: true
 ```
 
-Có thể kết hợp bearer/API key/cookie jar. Không kết hợp bearer và basic vì cùng dùng `Authorization`. Header trùng tên không phân biệt hoa/thường bị từ chối; tên query/cookie phân biệt hoa/thường.
+Bearer, API key and the cookie jar can be combined. Bearer and basic cannot, because both use `Authorization`. Header names that collide case-insensitively are rejected. Query and cookie names are case-sensitive.
 
-### 4.4. Cookie jar
+**Cookie jar**
 
-`auth: { cookies: true }` dùng cookie jar của auth đó, không phải một raw `Cookie` string. Thường kết hợp recipe đăng nhập có `capture.cookies: true` ở phần 5. Cookie-only không tự được coi là đã đăng nhập khi jar rỗng.
+`auth: { cookies: true }` enables the auth's own cookie jar. It is not a raw `Cookie` string. It is normally paired with a login recipe that has `capture.cookies: true` (see below). A cookie-only auth is not considered logged in while the jar is empty. To import cookies you already have, use a [session](#otp-sso-and-interactive-sessions).
 
-Nếu có cookie sẵn và muốn import thủ công, dùng [session](#8-otpsso-và-session-riêng).
+### Secret sources
 
-### 4.5. Nguồn secret
+The same syntax works for `token`, `value`, `username`, `password` and the initial values in `credentials`:
 
-Dùng cùng cú pháp tại `token`, `value`, `username`, `password` và các giá trị ban đầu trong `credentials`:
-
-| Cú pháp | Ý nghĩa |
+| Syntax | Meaning |
 |---|---|
-| `{ fromEnv: API_TOKEN }` | Đọc biến môi trường trong process MCP |
-| `{ fromFile: ./secrets.json, pointer: /orders/token }` | Đọc trường trong file JSON |
-| `{ fromFile: ./token.json }` | Đọc JSON root; file ví dụ có nội dung `"demo-token"`, không phải plain text |
-| `demo-token` | Literal; có cảnh báo theo tên field, không log giá trị |
-| `{ fromCredential: accessToken }` | Dùng giá trị có tên trong auth hiện tại, thường do recipe capture |
+| `{ fromEnv: API_TOKEN }` | Read an environment variable of the MCP process |
+| `{ fromFile: ./secrets.json, pointer: /orders/token }` | Read a field from a JSON file |
+| `{ fromFile: ./token.json }` | Read the JSON root. The file must contain a JSON value such as `"demo-token"`, not plain text |
+| `demo-token` | A literal. Produces a warning based on the field name; the value is never logged |
+| `{ fromCredential: accessToken }` | Use a named value from the current auth, usually captured by a recipe |
 
-`fromCredential` không dùng trong initial `credentials`, catalog `credentialSources` hoặc auth tải spec. Giá trị env/file cho binding phải là string; không tự chuyển object/số thành token. Thiếu nguồn không tự chuyển sang anonymous. File secret được bảo vệ khỏi upload/export; tự quản lý quyền truy cập file và không commit secret.
+`fromCredential` cannot be used in initial `credentials`, in catalog `credentialSources`, or in spec-fetch auth. Env and file values for a binding must be strings; objects and numbers are not silently converted. A missing source never silently falls back to anonymous. Secret files are protected from upload and export, but you are responsible for their permissions, and you should not commit them.
 
-Server không tự load `.env`. Cấp biến môi trường cho process MCP qua client hoặc môi trường khởi chạy. Thay đổi env của một process khác không cập nhật env của MCP đang chạy; khi cần, khởi động lại MCP với env mới.
+### Login and refresh
 
-## 5. Đăng nhập và refresh token
+Use a recipe when you must call an API to obtain credentials. A username and password are not required: the body can be a grant code, client credentials, or whatever your API's contract needs.
 
-Dùng khi cần gọi API để lấy credential. Không bắt buộc username/password: body có thể là grant code, client credentials hoặc dữ liệu khác theo contract API.
+Three parts have different roles:
 
-Ba phần có vai trò khác nhau:
+- `auth`: **what to send** on business requests.
+- `credentials`: initial named values. They are not sent unless referenced.
+- `authentication` / `refresh`: call **one operation**, then capture the result.
 
-- `auth`: **gửi gì** trên request nghiệp vụ.
-- `credentials`: giá trị có tên ban đầu; không tự gửi nếu không được tham chiếu.
-- `authentication` / `refresh`: gọi **một operation** rồi capture kết quả.
-
-### Ví dụ grant code + refresh token
+**Example: grant code plus refresh token**
 
 ```yaml
 services:
@@ -253,54 +377,52 @@ services:
           refreshToken: { bodyPointer: /refresh_token }
 ```
 
-Các operation phải có trong spec. JSON Pointer như `/session/accessToken` nghĩa là đọc `response.session.accessToken`. Refresh token được giữ trong credential store; ví dụ này chỉ gửi nó trong recipe refresh, không đưa vào request nghiệp vụ.
+Both operations must exist in the spec. A JSON Pointer such as `/session/accessToken` reads `response.session.accessToken`. The refresh token stays in the credential store. In this example it is sent only by the refresh recipe, never on business requests.
 
-**Cách dùng tool:** tên tool đứng trước JSON; đây không phải lệnh shell.
+**How to use it.** The tool name comes first, followed by its JSON arguments. These are not shell commands.
 
-1. `authenticate` với `{"service":"accounts"}`.
-2. `get_auth_status` với `{"service":"accounts"}` cho tới khi hết `recovering`.
-3. Khi `ready`, gọi API bình thường.
-4. Refresh thủ công: `authenticate` với `{"service":"accounts","action":"refresh"}`.
+1. `authenticate` with `{"service":"accounts"}`.
+2. `get_auth_status` with `{"service":"accounts"}` until it stops reporting `recovering`.
+3. When the state is `ready`, call the API normally.
+4. To refresh manually: `authenticate` with `{"service":"accounts","action":"refresh"}`.
 
-Có thể nhờ agent: “Xác thực service accounts bằng recipe đã cấu hình, chờ hoàn tất rồi báo trạng thái; không hiển thị credential.”
+You can also ask the agent: "Authenticate the accounts service with the configured recipe, wait until it finishes, then report the status. Do not show any credentials."
 
-### Quy tắc cần nhớ
+**Rules to remember**
 
-- `authenticate` chỉ chạy `authentication`; nếu không có recipe, nó reload static sources. Không tự đăng nhập khi gọi nghiệp vụ thiếu credential.
-- `action: refresh` chỉ chạy `refresh`. Không có recipe thì lỗi local `AUTH_REFRESH_UNAVAILABLE`.
-- **401** có thể khởi chạy một refresh nền, nhưng **request gốc không bao giờ được gửi lại tự động**. Người gọi vẫn nhận 401 và `authRecovery`. Sau khi refresh xong, bạn/agent quyết định có gọi lại hay không.
-- **403**, anonymous, session hoặc request override credential không kích hoạt refresh.
-- Trong lúc chạy recipe, request nghiệp vụ mới bị `AUTH_RECOVERING`. Gọi lại cùng action tham gia lần đang chạy; action khác bị `AUTH_BUSY`.
-- Refresh thất bại không tự lặp liên tục; cần yêu cầu retry rõ ràng bằng `authenticate` và action phù hợp.
-- Capture credential/cookie và cập nhật binding diễn ra cùng nhau. Thiếu một capture bắt buộc thì không áp dụng kết quả từng phần. Credential không có tên trong capture giữ giá trị cũ; muốn rotate refresh token thì phải capture lại nó.
-- Capture header của managed recipe giữ nguyên nội dung, không bỏ `Bearer `. Capture scalar chấp nhận string không rỗng hoặc số hữu hạn; số được đổi thành string.
-- Recipe mặc định nhận HTTP 200–299; có thể đặt `successStatuses: [200, 201]`. Không follow redirect, không replay, không tự chạy recipe tiền đề.
+- `authenticate` runs only `authentication`. Without a recipe it reloads static sources. It never logs in automatically when a business call lacks credentials.
+- `action: refresh` runs only `refresh`. Without a refresh recipe it fails locally with `AUTH_REFRESH_UNAVAILABLE`.
+- A **401** can start a background refresh, but **the original request is never replayed automatically**. The caller still receives the 401 plus `authRecovery`. After the refresh finishes, you or the agent decide whether to call again.
+- A **403**, an anonymous request, a session, or a request with an `Authorization` override does not trigger a refresh.
+- While a recipe runs, new business requests fail with `AUTH_RECOVERING`. Calling the same action again joins the running one; a different action fails with `AUTH_BUSY`.
+- A failed refresh does not retry in a loop. Request a retry explicitly with `authenticate` and the right action.
+- Captured credentials, cookies and binding updates are applied together. If a required capture is missing, nothing is applied partially. A credential not named in the capture keeps its old value, so to rotate a refresh token you must capture it again.
+- Header captures in managed recipes keep the header content as-is, including `Bearer `. A scalar capture accepts a non-empty string or a finite number; numbers become strings.
+- A recipe accepts HTTP 200-299 by default. Set `successStatuses: [200, 201]` to change that. Recipes do not follow redirects, do not replay, and do not run prerequisite recipes.
 
-### Request và body trong recipe
+**Recipe requests.** `request` supports `service`, `operation`, `path`, `query`, `headers`, `cookies`, `body` and `auth`.
 
-`request` hỗ trợ `service`, `operation`, `path`, `query`, `headers`, `cookies`, `body`, `auth`.
+- `service` defaults to the service that owns the recipe. A recipe in a named profile must set it explicitly.
+- `request.auth` defaults to anonymous and does **not inherit** the owner's bearer or cookies. To send them, declare the auth methods explicitly. `cookies: true` uses the current jar.
+- Templates are substituted in payloads: `{fromEnv}`, `{fromFile,pointer?}`, `{fromCredential}`. Wrap a value as `{literal: {fromEnv: "text"}}` to send that object unchanged.
+- A `fromCredential` name must be declared in initial credentials or in a capture. Authentication can only use credentials with an initial definition, not its own future captures. Refresh can use what authentication captured.
+- A capture needs non-empty credentials or `cookies: true`. Capturing cookies requires the owner to have `auth.cookies: true`.
+- An authentication capture starts a fresh cookie jar. A refresh keeps and updates the existing jar.
 
-- `service` mặc định là service chứa recipe. Recipe trong named profile phải ghi rõ service.
-- `request.auth` mặc định anonymous, **không kế thừa** bearer/cookie của owner. Muốn gửi thì khai báo auth methods rõ ràng; `cookies: true` dùng jar hiện tại.
-- Template được thay trong payload: `{fromEnv}`, `{fromFile,pointer?}`, `{fromCredential}`. Bọc `{literal: {fromEnv: "text"}}` để gửi object đó nguyên trạng.
-- Tên `fromCredential` phải được khai báo trong initial credentials hoặc capture. Authentication chỉ dùng được credential có initial definition, không dựa vào capture tương lai của chính nó. Refresh có thể dùng capture của authentication.
-- Capture cần credentials không rỗng hoặc `cookies: true`. Capture cookie cần owner `auth.cookies: true`.
-- Authentication capture cookie bắt đầu jar mới; refresh giữ và cập nhật jar hiện có.
-
-Body recipe có **một** trong các dạng dưới đây:
+A recipe body takes **one** of these forms. They are alternatives, so do not paste all four into one recipe:
 
 ```yaml
-# JSON; có thể thêm contentType cạnh json
+# JSON; you can add contentType next to json
 body: { json: { name: demo } }
 
-# application/x-www-form-urlencoded; ví dụ client credentials
+# application/x-www-form-urlencoded, for example client credentials
 body:
   form:
     grant_type: client_credentials
     client_id: { fromEnv: CLIENT_ID }
     client_secret: { fromEnv: CLIENT_SECRET }
 
-# Multipart; file phải qua uploadRoots
+# Multipart; files must be under uploadRoots
 body:
   multipart:
     fields: { note: demo }
@@ -310,9 +432,9 @@ body:
 body: { binary: { file: ./fixtures/demo.bin, contentType: application/octet-stream } }
 ```
 
-Các block trên là **những lựa chọn thay thế**, không dán cả bốn `body` vào một recipe. Đường dẫn file recipe là cấu hình cố định, không lấy từ credential substitutions.
+File paths in recipes are fixed configuration. They cannot come from credential substitution.
 
-## 6. Nhiều tài khoản và profile dùng chung
+### Multiple accounts and shared profiles
 
 ```yaml
 profiles:
@@ -334,125 +456,21 @@ services:
     auth: { profile: qa }
 ```
 
-- Gọi orders không chọn auth sẽ dùng qa. Chọn admin bằng `"auth":{"mode":"profile","profileId":"admin"}` trong `invoke_operation`.
-- Nếu dùng `profiles` mà bỏ `defaultProfile`, request mặc định anonymous; không tự chọn profile đầu tiên. Tool auth target service sẽ yêu cầu chọn profile cụ thể.
-- Điều khiển profile trực tiếp: `authenticate` / `get_auth_status` với `{"profile":"qa"}`. Không truyền cả `service` và `profile`.
-- Profile chỉ dùng được trên service có tham chiếu đến nó. Hai service dùng qa chia sẻ credential, jar và task của qa; cookie vẫn theo domain/path.
-- Named profile cũng có `credentials`, `authentication`, `refresh`. Với recipe, ghi `request.service` rõ ràng, có thể trỏ identity service riêng. Việc này chỉ cho phép recipe gọi operation đó, không cấp toàn bộ credential nghiệp vụ cho identity service.
-- Service dùng profile reference không được có sibling `credentials`/`authentication`/`refresh`; đặt chúng trong profile.
+- A call to `orders` with no auth choice uses `qa`. To use `admin`, pass `"auth":{"mode":"profile","profileId":"admin"}` to `invoke_operation`.
+- If a service lists `profiles` but has no `defaultProfile`, requests are anonymous by default. The first profile is never picked for you. Auth tools aimed at that service ask you to name a profile.
+- To control a profile directly, call `authenticate` or `get_auth_status` with `{"profile":"qa"}`. Do not pass both `service` and `profile`.
+- A profile is usable only on services that reference it. Two services using `qa` share the same credentials, cookie jar and refresh task. Cookies are still scoped by domain and path.
+- A named profile can have its own `credentials`, `authentication` and `refresh`. For recipes, set `request.service` explicitly; it may point to a separate identity service. That only lets the recipe call that operation. It does not give the identity service your business credentials.
+- A service that references a profile must not also have its own `credentials`, `authentication` or `refresh`. Put them in the profile.
 
-## 7. Tìm và gọi API
+### OTP, SSO and interactive sessions
 
-### 7.1. Luồng thông thường
+Use a session when an agent and a person must work through several steps: request an OTP, enter it, receive a token or cookie, then call the API. The server never requests an OTP, polls, opens a browser or solves a CAPTCHA by itself. A session is bound to one service.
 
-| Bước | Tool | Tham số ví dụ |
-|---|---|---|
-| Xem service và revision | `list_apis` | `{}` |
-| Tìm operation | `search_operations` | `{"service":"orders","query":"order detail","limit":5}` |
-| Đọc contract | `get_operation_schema` | `{"service":"orders","operation":"GET /orders/{id}","revision":"<revision-vừa-nhận>"}` |
-| Gọi API | `invoke_operation` | Ví dụ dưới |
+**Capture from a response**
 
-```json
-{
-  "service": "orders",
-  "operation": "GET /orders/{id}",
-  "revision": "<revision-vừa-nhận>",
-  "input": {
-    "path": { "id": "demo-123" },
-    "query": { "includeItems": true },
-    "headers": { "X-Request-ID": "demo-request" }
-  }
-}
-```
-
-`operation` là key trả về từ search, thường là `METHOD /path`, không phải `operationId`. `revision` là revision spec để tránh gọi dựa trên contract cũ. Khi spec đổi, dùng `refresh_specs` với `{"service":"orders"}`, rồi tìm/đọc lại contract để lấy revision mới.
-
-Search hỗ trợ `service`, `method`, `tag`, `includeDeprecated`, `limit`, `cursor`. Dùng `nextCursor` với cùng truy vấn để xem trang sau; thay query hoặc revision làm cursor cũ mất hiệu lực.
-
-### 7.2. Gửi body
-
-**Khác recipe:** `invoke_operation.input.body` dùng các wrapper `json.value` và `form.fields`.
-
-```json
-{ "body": { "json": { "value": { "name": "demo", "quantity": 2 } } } }
-```
-
-```json
-{ "body": { "form": { "fields": { "name": "demo", "tags": ["a", "b"] } } } }
-```
-
-Đây là nội dung đặt trong `input`. Mỗi request chỉ có một kiểu body. Có thể chỉ định `contentType` trong `json` hoặc `form` nếu cần chọn media type được operation khai báo.
-
-### 7.3. Upload multipart hoặc binary
-
-Trước tiên cho phép thư mục trong config:
-
-```yaml
-files:
-  uploadRoots: [./fixtures]
-  exportRoots: [./exports]
-```
-
-Tạo sẵn hai thư mục. Sau đó truyền đường dẫn tuyệt đối khi gọi tool:
-
-```json
-{
-  "body": {
-    "multipart": {
-      "fields": { "description": "demo" },
-      "files": [
-        { "field": "document", "path": "/absolute/path/fixtures/demo.pdf", "filename": "demo.pdf", "contentType": "application/pdf" }
-      ]
-    }
-  }
-}
-```
-
-Hoặc:
-
-```json
-{ "body": { "binary": { "file": "/absolute/path/fixtures/demo.bin", "contentType": "application/octet-stream" } } }
-```
-
-Mảng multipart files cho phép lặp cùng `field`. File ngoài `uploadRoots`, symlink thoát root hoặc file được bảo vệ không được upload. Media type phải phù hợp operation; đọc contract trước khi gửi.
-
-### 7.4. Chọn auth và negative testing
-
-`invoke_operation.auth` có bốn mode:
-
-| Mode | Cách dùng |
-|---|---|
-| `{"mode":"default"}` hoặc bỏ `auth` | Dùng auth mặc định của service, nếu không có thì anonymous |
-| `{"mode":"profile","profileId":"qa"}` | Named profile service cho phép |
-| `{"mode":"session","sessionId":"<id>"}` | Session riêng của đúng service |
-| `{"mode":"anonymous"}` | Không kế thừa credential/cookie; dữ liệu bạn truyền rõ trong input vẫn được gửi |
-
-Để kiểm thử token sai, có thể truyền `input.headers.Authorization` riêng. Nó override credential tương ứng, không sửa managed credential và không kích hoạt auto-refresh cho request đó.
-
-Server **serialize, không sửa dữ liệu giúp bạn**: không chèn defaults, không ép kiểu, không xóa field lạ hoặc `null`. Bỏ body khác với gửi `{"json":{"value":null}}` (gửi bytes `null`). HTTP 4xx/5xx vẫn là kết quả thật, không bị đổi thành “tool thất bại vì validation”.
-
-Các lỗi không thể gửi an toàn như thiếu path parameter, path escape, CR/LF trong header, media type không được khai báo hoặc sửa header framing do transport quản lý bị chặn local.
-
-### 7.5. Đọc kết quả
-
-- `sent: false`: chưa gửi request. Xem `error.code`/`error.message`.
-- `http.status` và `http.headers`: kết quả HTTP thực tế.
-- `bodyView`: phần response dành cho agent đọc.
-- `diagnostics.request` / `diagnostics.response`: kiểm tra theo spec, chỉ mang tính chẩn đoán; không thay thế HTTP outcome. State: `valid`, `invalid`, `not_available`, `error`.
-- `bodyComplete: false`: body bị thiếu do giới hạn hoặc stream lỗi; không được kết luận toàn bộ response hợp lệ.
-- `authRecovery`: trạng thái refresh nền sau 401; không có nghĩa request đã được replay.
-- Lỗi mạng/TLS/timeout không tạo HTTP status giả. `error.mayHaveBeenSent` cho biết request có thể đã ra mạng; đặc biệt thận trọng khi retry thao tác ghi.
-
-Mặc định không follow redirect. `followRedirects: true` chỉ theo redirect cùng origin, trong giới hạn: 303 và POST sau 301/302 đổi sang GET; 307/308 giữ method/body. Không chuyển credential sang origin khác.
-
-## 8. OTP/SSO và session riêng
-
-Session phù hợp khi agent/người dùng phải tương tác nhiều bước: xin OTP, nhập OTP, lấy token/cookie rồi gọi API. Server không tự xin OTP, polling, mở browser hay giải CAPTCHA.
-
-### 8.1. Capture từ response
-
-1. Gọi operation xin OTP **một lần theo yêu cầu rõ ràng**, với `auth: {mode: anonymous}`.
-2. Người dùng cung cấp OTP. Gọi operation xác minh bằng `invoke_operation`:
+1. Call the operation that requests the OTP **once, on explicit request**, with `auth: {mode: anonymous}`.
+2. The person provides the OTP. Call the verify operation with `invoke_operation`:
 
 ```json
 {
@@ -460,7 +478,7 @@ Session phù hợp khi agent/người dùng phải tương tác nhiều bước:
   "operation": "POST /otp/verify",
   "revision": "<revision>",
   "auth": { "mode": "anonymous" },
-  "input": { "body": { "json": { "value": { "code": "<OTP-người-dùng-cung-cấp>" } } } },
+  "input": { "body": { "json": { "value": { "code": "<OTP-provided-by-the-user>" } } } },
   "capture": {
     "tokens": [
       { "id": "access", "type": "bearer", "from": "body", "pointer": "/token" }
@@ -470,23 +488,23 @@ Session phù hợp khi agent/người dùng phải tương tác nhiều bước:
 }
 ```
 
-3. Lấy `capture.sessionId` khi `capture.state` là `captured`.
-4. Gọi nghiệp vụ bằng `auth: {mode: session, sessionId: ...}`.
+3. Read `capture.sessionId` when `capture.state` is `captured`.
+4. Call business operations with `auth: {mode: session, sessionId: ...}`.
 
-Chỉ bật `capture.cookies` khi response thực sự có Set-Cookie. Có thể capture token từ header bằng `{"id":"access","type":"bearer","from":"header","header":"Authorization"}`; riêng session bearer-header capture bỏ prefix `Bearer `, khác managed recipe. API-key capture dùng `type: apiKey`, thêm `in: header|query|cookie` và `name`.
+Enable `capture.cookies` only if the response really sets cookies. To capture a token from a header, use `{"id":"access","type":"bearer","from":"header","header":"Authorization"}`. Unlike managed recipes, a session's bearer-header capture strips the `Bearer ` prefix. For an API key, use `type: apiKey` with `in: header|query|cookie` and `name`.
 
-Capture mặc định chỉ áp dụng 200–299, có thể đặt `successStatuses`. Capture thất bại không cập nhật một phần session. Để cập nhật session hiện có, thêm `capture.sessionId`.
+A capture applies only to 200-299 responses by default; set `successStatuses` to change that. A failed capture never updates a session partially. To update an existing session, add `capture.sessionId`.
 
-### 8.2. Import credential có sẵn
+**Import credentials you already have**
 
-Ưu tiên khai báo catalog trong config:
+Prefer declaring a catalog in the config:
 
 ```yaml
 credentialSources:
   qaToken: { fromEnv: QA_SESSION_TOKEN }
 ```
 
-Gọi `manage_session`:
+Then call `manage_session`:
 
 ```json
 {
@@ -496,9 +514,9 @@ Gọi `manage_session`:
 }
 ```
 
-Chỉ id khai báo ở top-level `credentialSources` được import. Secret inline của service/profile hoặc captured refresh token không tự xuất hiện trong catalog.
+Only ids declared in top-level `credentialSources` can be imported. Inline secrets in a service or profile, and captured refresh tokens, do not appear in the catalog automatically.
 
-Nếu cần import trực tiếp (giá trị có thể đi vào lịch sử AI):
+If you must import values directly (they may end up in AI conversation history):
 
 ```json
 {
@@ -511,37 +529,37 @@ Nếu cần import trực tiếp (giá trị có thể đi vào lịch sử AI):
 }
 ```
 
-Inspect bằng `{"action":"inspect","sessionId":"<id>"}` hoặc bỏ sessionId để liệt kê; delete bằng `{"action":"delete","sessionId":"<id>"}`. Inspect chỉ trả metadata, không trả secret.
+Inspect with `{"action":"inspect","sessionId":"<id>"}`, or omit `sessionId` to list sessions. Delete with `{"action":"delete","sessionId":"<id>"}`. Inspect returns metadata only, never secrets.
 
-Session bị ràng buộc vào một service, không tự refresh, không thay đổi managed profile và không tự được promote thành profile. Khi process kết thúc, session trong bộ nhớ mất theo.
+Sessions are bound to one service, do not refresh themselves, do not change managed profiles, and are never promoted to profiles. They live in memory and disappear when the process ends.
 
-## 9. Response lớn, file và base64
+## Large responses and files
 
-Server lưu response thành artifact và trả view có giới hạn, tránh nhét cả file/base64 dài vào hội thoại.
+The server stores responses as artifacts and returns a bounded view, so long files and base64 strings do not flood the conversation.
 
-- `bodyTransformed: true`: view đã được rút gọn; không phải nguyên response.
-- `omissions`: các trường bị rút gọn, lý do, JSON Pointer và artifact id.
-- `rawBodyArtifact`: bản bytes response entity sau HTTP content-decoding; có metadata và SHA-256.
+- `bodyTransformed: true`: the view was shortened and is not the full response.
+- `omissions`: which fields were shortened, why, their JSON Pointer and the artifact id.
+- `rawBodyArtifact`: the response entity bytes after HTTP content decoding, with metadata and a SHA-256.
 
-### Đọc một phần
+### Read part of an artifact
 
-Gọi `read_artifact`:
+Call `read_artifact` with a pointer:
 
 ```json
 { "artifactId": "<id>", "pointer": "/data/status" }
 ```
 
-Hoặc đọc theo trang:
+Or page through it:
 
 ```json
 { "artifactId": "<id>", "offset": 0, "limit": 4096 }
 ```
 
-Dùng `nextOffset` của kết quả để đọc tiếp. Pointer vào string trả text; pointer vào object/array trả JSON. Đọc binary trả metadata; dùng export để lấy file. Pointer JSON sử dụng giá trị đã parse (có giới hạn độ chính xác số); export original giữ bytes.
+Use `nextOffset` from the result to continue. A pointer to a string returns text, and a pointer to an object or array returns JSON. Reading a binary artifact returns metadata only; use export to get the file. Pointers work on the parsed JSON value (number precision is limited); exporting `original` keeps the exact bytes.
 
-### Xuất file
+### Export a file
 
-Thư mục đích phải nằm dưới `files.exportRoots`. Gọi `export_artifact`:
+The destination must be under `files.exportRoots`. Call `export_artifact`:
 
 ```json
 {
@@ -552,15 +570,15 @@ Thư mục đích phải nằm dưới `files.exportRoots`. Gọi `export_artifa
 }
 ```
 
-| Representation | Kết quả |
+| Representation | Result |
 |---|---|
-| `original` | Bytes artifact nguyên bản |
-| `text` | Text của artifact hoặc field tại pointer |
-| `decoded` | Giải mã base64 nghiêm ngặt của string |
+| `original` | The artifact's original bytes |
+| `text` | The text of the artifact, or of the field at the pointer |
+| `decoded` | Strict base64 decoding of the string |
 
-Không ghi đè file đã có, không cho symlink escape. Tên file từ response `Content-Disposition` không được tin dùng. Artifact chỉ sống trong process và được xóa khi đóng bình thường; file đã export vẫn còn.
+Export never overwrites an existing file and never follows a symlink out of a root. File names from `Content-Disposition` are not trusted. Artifacts exist only for the lifetime of the process and are removed on normal shutdown; exported files stay.
 
-Muốn đánh dấu field base64 rõ ràng trong config:
+To mark a base64 field explicitly in the config:
 
 ```yaml
 encodedFields:
@@ -570,55 +588,59 @@ encodedFields:
     mediaType: image/png
 ```
 
-`*` khớp một segment. Có thể thêm `operation` để giới hạn theo operation. Schema `format: byte`, `contentEncoding` và data URI cũng giúp xác nhận encoding. Chuỗi chỉ “trông giống base64” không được khẳng định chắc chắn là base64.
+`*` matches one path segment. Add `operation` to limit a rule to one operation. Schema hints such as `format: byte`, `contentEncoding` and data URIs also help confirm an encoding. A string that merely looks like base64 is not asserted to be base64.
 
-## 10. Kiểm tra cấu hình và xử lý lỗi
+If a response exceeds `responseBytes`, you still get the status and headers, but the body may be incomplete (`bodyComplete: false`). Total artifact storage is capped by `sessionArtifactBytes`.
+
+## Troubleshooting
+
+Start with the config check:
 
 ```bash
-node /absolute/path/openapi-swagger-mcp/dist/cli.js --config /absolute/path/config.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.0 --config /absolute/path/config.yaml --check
 ```
 
-Report gồm `ok`, `services`, `checks`, `remoteSpecsChecked: false`, `operationsChecked: false`. Mỗi check có `field`, `state` (`ok`, `pending`, `error`) và có thể có `code`.
+The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and `operationsChecked: false`. Each check has a `field`, a `state` (`ok`, `pending` or `error`) and possibly a `code`.
 
-- `pending`: credential chờ capture khi chạy, không phải lỗi tĩnh.
-- Kiểm tra nguồn env/file kể cả khi có recipe, local spec/CA file và upload/export roots.
-- Không tải remote spec, không parse/validate nội dung spec, không kiểm tra operation từ xa, không chạy recipe hay tạo artifact directory.
-- Config parse/schema lỗi: stderr chứa lỗi đã sanitize, stdout rỗng. Config parse được: stdout có một JSON report, không có secret value.
+- `pending` means a credential will be captured at runtime. It is not a static error.
+- It checks env and file sources (even when a recipe exists), local spec and CA files, and upload/export roots.
+- It does not fetch remote specs, parse spec content, check operations remotely, run recipes or create the artifact directory.
+- If the config cannot be parsed or fails the schema, stderr has a sanitized error and stdout is empty. If it parses, stdout has one JSON report with no secret values.
 
-| Exit code | Ý nghĩa |
+| Exit code | Meaning |
 |---|---|
-| `0` | Kiểm tra tĩnh đạt |
-| `1` | Config/nguồn/file/root có lỗi |
-| `2` | Sai cách dùng CLI, ví dụ thiếu `--config` hoặc cờ lạ |
+| `0` | Static checks passed |
+| `1` | A config, source, file or root problem |
+| `2` | CLI usage error, such as a missing `--config` or an unknown flag |
 
-### Lỗi thường gặp
+### Common problems
 
-| Triệu chứng / code | Cách xử lý |
+| Symptom / code | What to do |
 |---|---|
-| MCP không kết nối | Kiểm tra Node, đường dẫn tuyệt đối tới CLI/config, đã build và không thêm `--check` trong MCP entry |
-| `CONFIG_INVALID` | Chạy `--check`, xem field lỗi; dùng schema gợi ý, không trộn cú pháp cũ |
-| `SOURCE_UNAVAILABLE` / `CREDENTIAL_INVALID` | Kiểm tra env của process MCP, file JSON, pointer và kiểu string; không dán secret vào log |
-| Service `unavailable` | Xem lỗi trong `list_apis`; kiểm tra spec, refs, CA, quyền đọc file; sửa rồi `refresh_specs`. Spec nhỏ lệch chuẩn (xem [Spec không hoàn hảo](#spec-không-hoàn-hảo-cảnh-báo-thay-vì-chặn)) không làm service `unavailable` |
-| `AUTH_REQUIRED` | Kiểm tra nguồn tĩnh hoặc gọi `authenticate`; với OTP dùng session |
-| `AUTH_RECOVERING` | Chờ `get_auth_status` hết `recovering`; không tự retry mutation hàng loạt |
-| `AUTH_BUSY` | Đợi action hiện tại kết thúc rồi mới yêu cầu action khác |
-| `AUTH_REFRESH_UNAVAILABLE` | Chưa cấu hình refresh; xác thực lại rõ ràng hoặc import session |
-| `AUTH_RECIPE_INPUT` | Credential/template cần dùng chưa có giá trị; recipe không tự chạy bước tiền đề |
-| `AUTH_RECIPE_INVALID` / `AUTH_RECIPE_FAILED` | Kiểm tra operation, request body, status và service của recipe |
-| `AUTH_CAPTURE_FAILED` | Kiểm tra JSON Pointer/header/Set-Cookie; kết quả capture không được publish từng phần |
-| `AUTH_TARGET_REQUIRED` | Service nhiều profile chưa có default; dùng `{profile: ...}` |
-| `PROFILE_NOT_ALLOWED` / `SESSION_SERVICE_MISMATCH` | Chọn profile được service liệt kê hoặc session đúng service |
-| `SPEC_REVISION_MISMATCH` | Lấy revision mới từ list/search/schema, đọc lại contract trước khi gọi |
-| `UPLOAD_NOT_ALLOWED` / lỗi export | Kiểm tra roots, đường dẫn thật, file được bảo vệ và đích chưa tồn tại |
-| HTTP 401 sau khi refresh bắt đầu | Đây vẫn là response request gốc; chờ refresh rồi quyết định có gọi request mới |
+| The MCP client cannot connect | Check Node is 22.19 or newer, that the CLI and config paths are absolute, and that the entry does not contain `--check`. If you run from source, check it is built |
+| `CONFIG_INVALID` | Run `--check` and read the failing field. Use the JSON Schema for suggestions, and do not mix in old syntax (see [Limitations](#limitations)) |
+| `SOURCE_UNAVAILABLE` / `CREDENTIAL_INVALID` | Check the MCP process's environment, the JSON file, the pointer, and that the value is a string. Do not paste secrets into logs |
+| A service shows `unavailable` | Read the error in `list_apis`. Check the spec, its refs, the CA file and file permissions, fix them, then run `refresh_specs`. Minor spec problems only produce [warnings](#imperfect-specs-warnings-instead-of-errors) and do not make a service unavailable |
+| `AUTH_REQUIRED` | Check the static sources or call `authenticate`. For OTP flows, use a session |
+| `AUTH_RECOVERING` | Wait until `get_auth_status` stops reporting `recovering`. Do not mass-retry write operations |
+| `AUTH_BUSY` | Wait for the running action to finish before requesting a different one |
+| `AUTH_REFRESH_UNAVAILABLE` | No refresh recipe is configured. Authenticate again explicitly or import a session |
+| `AUTH_RECIPE_INPUT` | A credential or template the recipe needs has no value. Recipes do not run prerequisite steps |
+| `AUTH_RECIPE_INVALID` / `AUTH_RECIPE_FAILED` | Check the recipe's operation, request body, status and service |
+| `AUTH_CAPTURE_FAILED` | Check the JSON Pointer, header or Set-Cookie. Capture results are never published partially |
+| `AUTH_TARGET_REQUIRED` | A service with several profiles has no default. Pass `{profile: ...}` |
+| `PROFILE_NOT_ALLOWED` / `SESSION_SERVICE_MISMATCH` | Use a profile the service lists, or a session created for that service |
+| `SPEC_REVISION_MISMATCH` | Get a fresh revision from list, search or schema, and re-read the contract before calling |
+| `UPLOAD_NOT_ALLOWED` / export errors | Check the roots, the real path, protected files, and that the destination does not exist |
+| HTTP 401 after a refresh started | That is still the original request's response. Wait for the refresh, then decide whether to send a new request |
 
-Đổi config cần khởi động lại process MCP. `refresh_specs` chỉ reload spec; `authenticate` không có recipe reload nguồn auth tĩnh, không reload toàn bộ config.
+**Restart or refresh?** Config changes need a restart of the MCP process. `refresh_specs` only reloads specs. `authenticate` without a recipe reloads static auth sources, not the whole config.
 
-## 11. Cấu hình nâng cao
+## Advanced configuration and limitations
 
-### Auth để tải spec và `$ref`
+### Authentication for spec downloads and `$ref`s
 
-Auth tải spec tách biệt auth nghiệp vụ, chỉ dùng static secret, không chạy recipe:
+Spec-fetch auth is separate from business auth. It only uses static secrets and never runs a recipe:
 
 ```yaml
 services:
@@ -634,31 +656,31 @@ services:
       bearer: { token: { fromEnv: API_TOKEN } }
 ```
 
-Credential tải spec chỉ gửi tới origin của source spec, không gửi sang origin `$ref` khác. Remote spec không được tham chiếu file local. Local `$ref` phải nằm trong roots được phép; thư mục chứa local spec được dùng làm root cho spec đó. Spec fetch không follow redirect. Một ref thiếu/sai làm snapshot service bị từ chối; service khác vẫn hoạt động.
+Spec-fetch credentials are sent only to the origin of the spec source, never to a different origin reached through a `$ref`. A remote spec cannot reference local files. A local `$ref` must stay inside the allowed roots; the directory of a local spec is used as that spec's root. Spec fetches do not follow redirects. A missing or broken ref causes that service's snapshot to be rejected, and other services keep working.
 
-### Spec không hoàn hảo: cảnh báo thay vì chặn
+### Imperfect specs: warnings instead of errors
 
-Spec do framework tự sinh (ví dụ NestJS) hay có lỗi nhỏ. Ba lỗi sau **không** chặn service. Chúng hiện trong `warnings` của `list_apis`. Danh sách bị giới hạn: tối đa 20 mục, tổng không quá 4096 byte, mỗi mục tối đa 512 byte và một dòng. Thứ tự ưu tiên: operation bị loại, rồi security scheme, rồi `operationId` trùng. Số liệu chính xác nằm ở trường `warningSummary` (`total`, `shown`, `omitted`, `excludedOperations`), không phải một dòng chữ thêm vào cuối danh sách. Khi `list_apis` quá ngân sách đầu ra, text cảnh báo được rút bớt (số đếm vẫn đúng); nếu ngay cả metadata cũng quá lớn thì trả `servicesInline: false` kèm `servicesArtifact`, đọc toàn bộ bằng `read_artifact`:
+Framework-generated specs (NestJS, for example) often have small mistakes. These three do **not** block a service. They appear in `warnings` from `list_apis`. The list is capped at 20 entries, 4096 bytes in total, and 512 bytes and one line per entry. Priority order is excluded operations, then security schemes, then duplicate `operationId`. Exact counts are in `warningSummary` (`total`, `shown`, `omitted`, `excludedOperations`), not in an extra line at the end of the list. If `list_apis` exceeds its output budget, warning text is shortened (counts stay accurate). If even the metadata is too large, the result has `servicesInline: false` and a `servicesArtifact` you read in full with `read_artifact`.
 
-| Lỗi trong spec | Cách xử lý | Ảnh hưởng |
+| Spec problem | Handling | Effect |
 |---|---|---|
-| `operationId` trùng giữa nhiều endpoint | Chỉ cảnh báo | Không ảnh hưởng, vì operation được gọi bằng `METHOD /path`. Search theo đúng id đó ra nhiều kết quả; phân biệt bằng trường `operation` |
-| `in`/`name` thừa trên security scheme `type: http` | Bỏ qua trường thừa khi kiểm tra, giữ nguyên spec gốc | Không ảnh hưởng |
-| Operation khai báo path parameter không có trong đường dẫn (ví dụ `customerId` mà path thiếu `{customerId}`) | **Loại riêng operation đó** khỏi service | Operation bị loại không tìm được; gọi trực tiếp trả `OPERATION_UNKNOWN` với message `operation was excluded from this specification` và `details.reason` = `PATH_PARAMETER_NOT_IN_TEMPLATE`; các operation khác dùng bình thường |
+| Duplicate `operationId` across endpoints | Warning only | No effect on calls, because operations are called by `METHOD /path`. Searching for that id returns several hits; tell them apart by the `operation` field |
+| Extra `in`/`name` on a `type: http` security scheme | The extra fields are ignored during validation; the original spec is kept | No effect |
+| An operation declares a path parameter that is not in the path (for example `customerId` with no `{customerId}` in the path) | **That operation alone is excluded** from the service | It cannot be found. Calling it directly returns `OPERATION_UNKNOWN` with the message `operation was excluded from this specification` and `details.reason` = `PATH_PARAMETER_NOT_IN_TEMPLATE`. Other operations work normally |
 
-Các lỗi khác vẫn chặn cả service với `SPEC_INVALID`, ví dụ path template `{id}` không được khai báo, `$ref` thiếu, hoặc sai cấu trúc OpenAPI.
+Other problems still block the whole service with `SPEC_INVALID`: for example a path template `{id}` with no matching parameter, a missing `$ref` target, or a malformed OpenAPI structure.
 
-**`$ref` kèm method hoặc `parameters` cùng cấp bị chặn.** Bất kỳ object nào trong spec mà có `$ref` dạng string cùng với `get`/`put`/`post`/`delete`/`options`/`head`/`patch`/`trace` hoặc `parameters` đều bị từ chối (`<tài liệu>: an object combines $ref with execution siblings (a method or parameters)`). Các công cụ xử lý trường hợp này khác nhau (bỏ qua, ghi đè hay gộp) và bundler gộp ngầm, nên server không tự chọn: tác giả spec phải chọn một cách. `summary`, `description` và `x-*` cùng cấp vẫn được phép.
+Warnings only report problems. They do not repair the spec, so fix it at the backend where possible.
 
-Việc quét chạy trên từng tài liệu gốc (root và mọi file hoặc URL được phép mà `$ref` trỏ tới) ngay khi đọc, trước khi bundler gộp chúng, và chạy lại trên tài liệu sau khi bundle, vì `$ref` mở rộng trên một container (ví dụ `paths: { $ref: 'p.json', '/a': { $ref: '#/x' } }`) có thể làm bundler tự tạo ra `$ref` kèm method từ hai object riêng lẻ đều hợp lệ. Server kiểm tra hình dạng object trước và sau bundle, không tự phân giải lại đường dẫn `$ref`. Chi phí: mọi object có hình dạng này bị từ chối, không chỉ dữ liệu mẫu (`example`, `enum`, `default`, `x-*`) mà cả schema, Link và Response, kể cả hình dạng chỉ xuất hiện sau khi merge. Đây là giới hạn tương thích: khi gặp, cần điều chỉnh spec (đổi tên key hoặc bỏ `$ref` khỏi object đó) nếu việc đó không làm sai contract của spec.
+**`$ref` combined with a method or `parameters` is rejected.** Any object in a spec that has a string `$ref` together with `get`, `put`, `post`, `delete`, `options`, `head`, `patch`, `trace` or `parameters` is refused (`<document>: an object combines $ref with execution siblings (a method or parameters)`). Tools disagree about what to do here (ignore, override or merge), and bundlers merge silently, so the server does not pick one; the spec author must choose. `summary`, `description` and `x-*` siblings are still allowed.
 
-**Extended `$ref` được chấp nhận.** Khi `$ref` mở rộng trên một container và kết quả merge không còn tổ hợp bị cấm, server chấp nhận merge của thư viện bundler: phía mở rộng (extender) thắng với giá trị scalar, object được gộp, array bị thay toàn bộ. Ví dụ: nếu file ngoài khai báo `parameters` có query bắt buộc `external` và phía mở rộng khai báo `parameters` có `root`, contract công bố chỉ còn `root`; parameter `external` biến mất vì array bị thay, không cộng dồn. Contract MCP công bố và dùng để serialize request là contract **sau bundle và sau validation**; không có bằng chứng server thật chấp nhận contract này. Hãy kiểm tra contract (`get_operation_schema`) và thử ở môi trường phù hợp trước khi gửi request có tác dụng phụ.
+The scan runs on every original document (the root and every allowed file or URL a `$ref` points to) as it is read, before the bundler merges them, and again on the bundled document. This is because an extended `$ref` on a container (for example `paths: { $ref: 'p.json', '/a': { $ref: '#/x' } }`) can make the bundler produce a `$ref` with a method from two objects that were each valid on their own. The server checks object shape before and after bundling and does not re-resolve `$ref` paths itself. The cost: every object with this shape is rejected, including not only sample data (`example`, `enum`, `default`, `x-*`) but also schemas, Links and Responses, including shapes that only appear after a merge. This is a compatibility limit. When you hit it, change the spec (rename the key, or remove the `$ref` from that object) if doing so does not change what the spec means.
 
-**Giới hạn đọc lặp.** Số chuỗi `$ref` khác nhau mà bundler yêu cầu đọc bị giới hạn bởi `refGraphDocuments`, và tổng số byte đọc (kể cả cùng một file đọc nhiều lần dưới những cách viết khác nhau như `.//a.json`) bị giới hạn bởi `refGraphBytes`. Vượt ngân sách đọc đã cấu hình thì dừng với `SPEC_LIMIT_EXCEEDED`. Ngân sách byte đầu vào không phải giới hạn cứng của heap/RSS.
+**Extended `$ref` is accepted.** When a `$ref` is extended on a container and the merged result no longer contains a forbidden combination, the server accepts the bundler library's merge: the extender wins for scalar values, objects are merged, and arrays are replaced entirely. For example, if an external file declares `parameters` with a required query parameter `external`, and the extender declares `parameters` with `root`, the published contract has only `root`. The `external` parameter disappears because arrays are replaced, not combined. The contract published over MCP, and used to serialize requests, is the one **after bundling and validation**. There is no evidence that the real server accepts this contract, so read it with `get_operation_schema` and try it in a suitable environment before sending requests with side effects.
 
-Lỗi tải và phân tích spec bị giới hạn 2048 byte. Cảnh báo chỉ báo lỗi, không sửa spec: nên sửa ở backend khi có thể.
+**Read limits.** The number of distinct `$ref` strings the bundler asks to read is capped by `refGraphDocuments`. The total bytes read, including the same file read several times under different spellings such as `.//a.json`, is capped by `refGraphBytes`. Exceeding a configured read budget stops with `SPEC_LIMIT_EXCEEDED`. These input byte budgets are not hard limits on heap or RSS. Spec load and parse errors are capped at 2048 bytes.
 
-### TLS riêng từng service
+### TLS per service
 
 ```yaml
 tls:
@@ -666,9 +688,9 @@ tls:
   verify: true
 ```
 
-Đây là block đặt dưới service. `verify: false` tắt xác minh TLS riêng service đó và có cảnh báo; chỉ dùng khi thực sự cần trong môi trường thử nghiệm, không phải cách sửa chứng chỉ mặc định. Không có tool đổi TLS lúc gọi API.
+This block goes under a service. `verify: false` turns off TLS verification for that service only and produces a warning. Use it only when you really need it in a test environment; it is not the way to fix a default certificate problem. No tool changes TLS settings at call time.
 
-### File và giới hạn
+### Files and limits
 
 ```yaml
 files:
@@ -682,56 +704,56 @@ limits:
   toolOutputBytes: 32768
 ```
 
-Chỉ khai báo những giá trị cần đổi. Tất cả giới hạn là số nguyên dương có mức tối đa; xem JSON Schema để biết range.
+Declare only the values you want to change. Every limit is a positive integer with a maximum; check the JSON Schema for the ranges.
 
-| Key | Mặc định | Phạm vi |
+| Key | Default | Scope |
 |---|---:|---|
-| `requestTimeoutMs` | 30000 ms | Request, gồm redirect hops; recipe cũng có timeout |
-| `maxConcurrentRequests` | 8 | Request thường |
-| `recipeConcurrency` | 2 | Lane riêng cho auth recipe |
-| `specDocumentBytes` | 10 MiB | Một document spec |
-| `refGraphDocuments` | 100 | Số document trong graph |
-| `refGraphBytes` | 50 MiB | Tổng bytes graph |
-| `refGraphDepth` | 64 | Độ sâu refs/template |
-| `responseBytes` | 50 MiB | Một response |
-| `uploadBytes` | 50 MiB | Upload |
-| `sessionArtifactBytes` | 250 MiB | Tổng artifact quota |
-| `inlineStringBytes` | 4096 bytes | Ngưỡng string hiển thị inline |
-| `toolOutputBytes` | 32768 bytes | Budget kết quả tool |
-| `artifactPageBytes` | 16384 bytes | Một trang đọc artifact |
-| `maxRedirects` | 5 | Số redirect được theo khi bật |
+| `requestTimeoutMs` | 30000 ms | A request, including redirect hops. Recipes also have a timeout |
+| `maxConcurrentRequests` | 8 | Normal requests |
+| `recipeConcurrency` | 2 | A separate lane for auth recipes |
+| `specDocumentBytes` | 10 MiB | One spec document |
+| `refGraphDocuments` | 100 | Documents in the ref graph |
+| `refGraphBytes` | 50 MiB | Total bytes in the ref graph |
+| `refGraphDepth` | 64 | Ref and template depth |
+| `responseBytes` | 50 MiB | One response |
+| `uploadBytes` | 50 MiB | One upload |
+| `sessionArtifactBytes` | 250 MiB | Total artifact quota |
+| `inlineStringBytes` | 4096 bytes | Threshold for showing a string inline |
+| `toolOutputBytes` | 32768 bytes | Budget for one tool result |
+| `artifactPageBytes` | 16384 bytes | One artifact read page |
+| `maxRedirects` | 5 | Redirects followed when enabled |
 
-`uploadRoots`/`exportRoots` mặc định rỗng: không cho phép upload/export cho tới khi khai báo. `artifactRoot` có thể chưa tồn tại; server tạo khi chạy. Vượt giới hạn response vẫn trả status/headers nhưng body có thể không đầy đủ.
+`uploadRoots` and `exportRoots` default to empty, so upload and export are disabled until you declare them. `artifactRoot` may not exist yet; the server creates it at runtime.
 
-## 12. Danh sách tool
+### Limitations
 
-| Tool | Dùng khi |
+- A local MCP server over stdio. It is not a hosted gateway or an HTTP MCP server.
+- Not a workflow engine: one recipe is one operation. The agent or a person orchestrates multi-step flows.
+- No automation of OAuth/PKCE callbacks, OTP polling, CAPTCHA or browser login. No scripting, HMAC signing or mTLS client authentication.
+- No telemetry. Specs and responses are untrusted data, not instructions for the agent, and descriptions and extensions are never executed.
+- Validation depends on spec quality. An unknown format is recorded as unverified, not as passed. Search is deterministic token scoring; the project makes no claims about token savings or semantic search accuracy.
+- Compatibility note: older config and tool forms were removed with no aliases. `bearer.login`, profile `components`/`recovery`, service-level `allowedProfiles`/`defaultProfile`, `$source`/`$component`, `authenticate_profile` and `get_profile_status` no longer work. Use the forms in this guide.
+
+## Tool reference
+
+| Tool | Use it to |
 |---|---|
-| `list_apis` | Xem service, spec readiness/revision, số operation, `warnings` của spec, auth mode/capability và lỗi tải spec |
-| `search_operations` | Tìm theo path, operationId, tag, summary, description; hỗ trợ paging |
-| `get_operation_schema` | Xem parameters, body, response schemas, security và refs của operation; contract lớn chuyển vào artifact |
-| `invoke_operation` | Gửi request thật, nhận HTTP outcome, diagnostics và tùy chọn capture vào session |
-| `refresh_specs` | Reload/validate spec; lỗi thì giữ snapshot hợp lệ trước đó |
-| `authenticate` | Chạy authentication, refresh rõ ràng hoặc reload static auth sources |
-| `get_auth_status` | Xem state, revision, capability, credential/binding presence, cookie names và failure; không trả credential values |
-| `manage_session` | Create/inspect/delete session riêng, import credential trực tiếp hoặc từ catalog |
-| `read_artifact` | Đọc response/contract đã lưu theo trang hoặc JSON Pointer |
-| `export_artifact` | Xuất bytes, text hoặc base64-decoded data vào file mới dưới exportRoots |
+| `list_apis` | See services, spec readiness and revision, operation counts, spec `warnings`, auth mode and capability, and spec load errors |
+| `search_operations` | Search by path, operationId, tag, summary or description, with paging |
+| `get_operation_schema` | See an operation's parameters, body, response schemas, security and refs. Large contracts go to an artifact |
+| `invoke_operation` | Send a real request and get the HTTP outcome, diagnostics and an optional capture into a session |
+| `refresh_specs` | Reload and validate specs. On failure the previous valid snapshot is kept |
+| `authenticate` | Run authentication, run an explicit refresh, or reload static auth sources |
+| `get_auth_status` | See state, revision, capability, credential and binding presence, cookie names and failures. Never returns credential values |
+| `manage_session` | Create, inspect or delete a session, importing credentials directly or from the catalog |
+| `read_artifact` | Read a stored response or contract by page or JSON Pointer |
+| `export_artifact` | Write bytes, text or base64-decoded data to a new file under `exportRoots` |
 
-Số tool không tăng theo số endpoint. Không tool nào nhận URL tùy ý để gọi ngoài các service đã cấu hình, tên env/file secret tùy ý, script hoặc tham số chuyển môi trường.
+The tool count does not grow with the number of endpoints. No tool accepts an arbitrary URL to call outside the configured services, an arbitrary env or file secret name, a script, or a parameter that switches environments.
 
-## 13. Giới hạn và phát triển
+## Development
 
-### Phạm vi
-
-- Local MCP qua stdio, không phải hosted gateway hay HTTP MCP server.
-- Không phải workflow engine: một recipe = một operation. Multi-step do agent/người dùng điều phối.
-- Không tự động hóa OAuth/PKCE callback, OTP polling, CAPTCHA, browser login; không hỗ trợ script, HMAC signing hay mTLS client auth.
-- Không có telemetry. Spec và response là dữ liệu không đáng tin, không phải chỉ dẫn cho agent; không thực thi descriptions/extensions.
-- Validation phụ thuộc chất lượng spec. Unknown format được ghi nhận là chưa kiểm chứng, không coi là đã đạt. Không quảng cáo token savings hay độ chính xác semantic search; search là token scoring xác định.
-- Config/tool cũ bị loại bỏ, không alias tương thích: `bearer.login`, profile `components`/`recovery`, service-level `allowedProfiles`/`defaultProfile`, `$source`/`$component`, `authenticate_profile`/`get_profile_status` không còn dùng. Dùng các dạng trong hướng dẫn này.
-
-### Dành cho người phát triển
+Work from a source checkout:
 
 ```bash
 npm ci
@@ -745,8 +767,8 @@ npm run verify:package
 npm audit --omit=dev --audit-level=high
 ```
 
-`npm run verify:package` cần `npm run build` chạy trước. Nó đóng gói thật, cài tarball vào thư mục consumer riêng, chạy `--check`, bin shim và smoke trên bản đã cài, rồi audit bản đã cài. Chỉ khi tất cả đạt, tarball mới vào `.release/<tên>.tgz` kèm file `.sha256`; nếu audit lỗi, tarball được giữ ở `.release/diagnostic/NOT-RELEASABLE-...` để làm bằng chứng. `npm pack --dry-run` không thay thế các bước này. Các cell CI (Ubuntu/macOS/Windows với Node 22.19.0, 22, 24) là một điều kiện phát hành riêng.
+Build before the integration tests and the smoke test, because some of them run the compiled CLI over stdio. Tests use a loopback backend, synthetic data and self-signed certificates meant only for tests. No real credentials are needed. Run `npm run gen:notices` to update the third-party notices when dependencies change.
 
-Build trước integration/smoke vì một số test chạy compiled CLI qua stdio. Tests dùng loopback backend, dữ liệu giả và chứng chỉ self-signed chỉ dành cho test. Không cần credential thật. `npm run gen:notices` cập nhật third-party notices khi cần.
+`npm run verify:package` needs `npm run build` first. It packs the package for real, installs the tarball into a separate consumer directory, runs `--check`, the bin shim and the smoke test against the installed copy, then audits that installed copy. Only if all of that passes does the tarball land in `.release/<name>.tgz` with a `.sha256` file. If the audit fails, the tarball is kept as evidence in `.release/diagnostic/NOT-RELEASABLE-...`. `npm pack --dry-run` is not a substitute. Verifying a local candidate this way is separate from publishing it. Publishing is a separate, deliberate registry action. The CI matrix (Ubuntu, macOS and Windows with Node 22.19.0, 22 and 24) is its own release condition.
 
-Giấy phép MIT. Danh sách giấy phép dependency: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Released under the MIT license. Dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
