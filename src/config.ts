@@ -487,10 +487,17 @@ export function loadConfig(configPathArg: string): AppConfig {
   };
 }
 
+/**
+ * Canonical form of `p`. A path that does not exist yet (a credential file created after the config is loaded) is
+ * resolved through its nearest existing ancestor, so it still matches the real path later computed for the same file
+ * (on Windows `RUNNER~1` and `runneradmin` are the same directory).
+ */
 export function safeRealpath(p: string): string {
+  const abs = path.resolve(p);
   try {
-    return fs.realpathSync.native(p);
+    return fs.realpathSync.native(abs);
   } catch {
-    return path.resolve(p);
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : path.join(safeRealpath(parent), path.basename(abs));
   }
 }

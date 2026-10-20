@@ -210,7 +210,7 @@ describe('config validation', () => {
 
   test('fromFile secrets are protected from upload/export like the config itself', () => {
     const p = project('c.json', JSON.stringify({ services: { a: { ...base, auth: { bearer: { token: { fromFile: 'secrets.json' } } } } } }), { 'spec.json': SPEC, 'secrets.json': '"x"' });
-    expect(loadConfig(p).protectedPaths).toContain(fs.realpathSync(path.join(path.dirname(p), 'secrets.json')));
+    expect(loadConfig(p).protectedPaths).toContain(fs.realpathSync.native(path.join(path.dirname(p), 'secrets.json')));
   });
 
   test('a service and a profile with the same name do not collide', () => {
