@@ -1,76 +1,441 @@
 # yaml-language-server: $schema=../config.schema.json
-#
-# One file = one environment. For UAT, copy this file to config.uat.yaml and add a second MCP entry.
-# Relative paths are resolved against this file's directory.
-# Validate without starting: openapi-swagger-mcp --config config.example.yaml --check
+##
+## openapi-swagger-mcp configuration cookbook
+## ==========================================
+##
+## The only ACTIVE entry is a minimal anonymous service called `orders`. It passes --check as-is.
+## Every other case is a ready-to-enable recipe that is commented out.
+##
+## How to use a recipe
+##   - Each recipe starts with a `##@ scenario:` line. It ends at the next `##@` line.
+##   - Lines that start with `##` are explanations. Lines that start with a single `# ` are disabled config.
+##   - To enable a recipe, delete the leading `# ` (hash and one space) from its disabled lines. The remaining
+##     text keeps its real YAML indentation, and `##` explanations may stay.
+##   - Service recipes go under `services:` (they already carry two-space indentation) and each has a unique
+##     service name. Top-level sections (`profiles`, `credentialSources`, `files`, `encodedFields`, `limits`)
+##     each appear ONCE, so enabling every recipe at the same time never creates a duplicate key.
+##   - Some recipes need another one. Their marker says `requires: ...`.
+##   - Replace every *.example.test host, env var name and file path with your own. They are placeholders.
+##
+## Ground rules
+##   - Give each service/environment a unique id, such as orders-dev and orders-uat, and tell the agent which
+##     to use. There is no --env switch. For isolation, use separate config files and MCP server entries.
+##   - Relative paths (spec files, secrets, CA files, roots) resolve against THIS file's directory.
+##   - Validate without starting the server (static: no network, specs are not downloaded):
+##       openapi-swagger-mcp --config /absolute/path/config.example.yaml --check
+##     --check DOES read the env vars and files that enabled recipes reference. An unset variable, or a missing
+##     file or directory, is reported as an error: export the variables and create the files/folders first.
+##   - `.env` files are not loaded. { fromEnv } reads the environment of the MCP server process (the `env` block
+##     of your MCP client entry, or the shell that starts the client), not your current terminal.
+##   - Never commit real secrets. Prefer { fromEnv } or { fromFile }. A literal secret works but is warned about
+##     on every start (the value itself is never logged).
+##   - Write requests are real. Point these services at dev/UAT systems only.
+##
 
 services:
-  # Simplest case: spec URL, base URL, token from an environment variable.
+  # ---- Minimal and active: no auth ------------------------------------------------------------
   orders:
-    baseUrl: http://localhost:8080/api/v1          # full prefix; spec servers/host are never used
-    spec: http://localhost:8080/v3/api-docs        # URL or file path
-    auth:
-      bearer:
-        token: { fromEnv: ORDERS_TOKEN }           # name of the env var, not the token itself
+    baseUrl: http://localhost:8080/api/v1          # full prefix; overrides servers/host/basePath in the spec
+    spec: http://localhost:8080/v3/api-docs        # URL (http/https) or a file path such as ./specs/orders.yaml
+  ## baseUrl rules: absolute http(s) URL, no user:password@, no ?query, no #fragment.
+  ## A service without `auth` sends anonymous requests. Add an `auth:` block (see below) when the API needs it.
 
-  # Grant-code login with a rotating refresh token. Call `authenticate` once; a later 401 runs `refresh`
-  # in the background. The failed request is returned as-is and never replayed. The refresh token is
-  # captured but only the access token, CSRF header and cookies are sent on business requests.
-  accounts:
-    baseUrl: https://accounts.dev.example.test
-    spec: https://accounts.dev.example.test/v3/api-docs
-    auth:
-      bearer: { token: { fromCredential: accessToken } }
-      apiKey: { header: X-CSRF-Token, value: { fromCredential: csrf } }
-      cookies: true
-    credentials:
-      grantCode: { fromEnv: ACCOUNTS_GRANT_CODE }
-    authentication:
-      request:
-        operation: POST /session/exchange
-        body: { json: { grantCode: { fromCredential: grantCode } } }
-      capture:
-        credentials:
-          accessToken: { bodyPointer: /session/accessToken }   # JSON Pointer into the response body
-          refreshToken: { bodyPointer: /session/refreshToken }
-          csrf: { header: X-CSRF-Token }
-        cookies: true
-    refresh:
-      request:
-        operation: POST /session/refresh
-        body: { form: { refresh_token: { fromCredential: refreshToken } } }
-      capture:
-        credentials:
-          accessToken: { bodyPointer: /access_token }
-          refreshToken: { bodyPointer: /refresh_token }        # listed = rotated
+##@ scenario: bearer-env
+## ==== STATIC CREDENTIALS: you already have the token, password or key ====
+## Bearer token from an environment variable. Sends `Authorization: Bearer <token>`. The value is the bare
+## token, without the `Bearer ` prefix. Other places the token can come from (use exactly one `token:`):
+##   token: { fromFile: ./secrets.json, pointer: /orders/token }  # JSON file; pointer is an RFC 6901 JSON Pointer
+##   token: { fromFile: ./token.json }                            # file whose whole content is a JSON string
+##   token: demo-token                                            # literal; local experiments only, warned on start
+#   ordersBearer:
+#     baseUrl: http://localhost:8080/api/v1
+#     spec: http://localhost:8080/v3/api-docs
+#     auth:
+#       bearer:
+#         token: { fromEnv: ORDERS_TOKEN }         # NAME of the variable, not the token itself
 
-  # API key from a local secrets file, spec from disk, private CA.
-  catalog:
-    baseUrl: https://catalog.dev.example.test
-    spec: ./specs/catalog.yaml
-    auth:
-      apiKey:
-        header: X-API-Key
-        value: { fromFile: ./secrets.json, pointer: /catalog }   # keep out of git, chmod 600
-    tls:
-      caFile: ./certs/dev-ca.pem
+##@ scenario: basic
+## HTTP Basic. username and password are read independently, then Basic-encoded. Each may be a literal, fromEnv
+## or fromFile. Only a Basic literal may be an empty string. Bearer and basic cannot be combined (both use the
+## Authorization header).
+#   ordersBasic:
+#     baseUrl: http://localhost:8080/api/v1
+#     spec: http://localhost:8080/v3/api-docs
+#     auth:
+#       basic:
+#         username: tester
+#         password: { fromEnv: ORDERS_PASSWORD }
 
-  # Quick local test only: inline secret. The server warns about it on every start.
-  # sandbox:
-  #   baseUrl: http://127.0.0.1:3000
-  #   spec: http://127.0.0.1:3000/openapi.json
-  #   auth:
-  #     bearer: { token: eyJ... }
+##@ scenario: apikey-header
+## API key. An apiKey entry picks exactly ONE destination: header, query or cookie. Swap the first key to move it:
+##   apiKey: { query: api_key, value: { fromEnv: ORDERS_API_KEY } }
+##   apiKey: { cookie: api_key, value: { fromEnv: ORDERS_API_KEY } }
+## `cookie:` here sends one fixed cookie. It is NOT the cookie jar (`cookies: true`, see the login recipes).
+## The value accepts the same sources as a token: literal, fromEnv, fromFile (with optional pointer).
+#   ordersApiKey:
+#     baseUrl: http://localhost:8080/api/v1
+#     spec: http://localhost:8080/v3/api-docs
+#     auth:
+#       apiKey:
+#         header: X-API-Key
+#         value: { fromEnv: ORDERS_API_KEY }
 
-# Credentials shared by several services (or several accounts) live in named profiles:
+##@ scenario: static-combined
+## Combined static methods. Bearer (or basic) can be combined with apiKey, and apiKey can be a list that sends
+## several keys at once. Header names that collide case-insensitively are rejected. Query and cookie names are
+## case-sensitive. Bearer plus basic is not allowed.
+#   ordersCombined:
+#     baseUrl: http://localhost:8080/api/v1
+#     spec: http://localhost:8080/v3/api-docs
+#     auth:
+#       bearer: { token: { fromEnv: ORDERS_TOKEN } }
+#       apiKey:
+#         - { header: X-Tenant-Key, value: { fromEnv: ORDERS_TENANT_KEY } }
+#         - { query: tenant, value: demo }             # literal values are warned about, even if not secret
+#         - { cookie: region, value: eu }
+
+##@ scenario: inline-literal
+## Inline literal secret (quick local test only). Works, but the server warns about it on every start. Do not
+## commit it or share the file.
+#   sandbox:
+#     baseUrl: http://127.0.0.1:3000
+#     spec: http://127.0.0.1:3000/openapi.json
+#     auth:
+#       bearer: { token: eyJ-replace-me }
+
+##@ scenario: grant-code-refresh
+## ==== LOGIN AND REFRESH RECIPES: the server must call your API to obtain credentials ====
+## Four parts, four roles:
+##   auth            WHAT is sent on business requests. It may reference named credentials with
+##                   { fromCredential: name }.
+##   credentials     INITIAL named values (literal/fromEnv/fromFile). Not sent unless something references them.
+##   authentication  ONE operation called by the `authenticate` tool. Captures values from the response.
+##   refresh         ONE operation called by `authenticate` with action "refresh", or in the background after
+##                   a 401 on a managed call. The 401 request itself is returned as-is and is NEVER replayed.
+##
+## Run it from the agent (tool name, then JSON arguments; these are not shell commands):
+##   authenticate      {"service":"accounts"}
+##   get_auth_status   {"service":"accounts"}      repeat until it stops reporting `recovering`
+##   authenticate      {"service":"accounts","action":"refresh"}
+## Nothing logs in automatically when a business call has no credentials.
+##
+## Both operations must exist in the service's spec. `operation` is "METHOD /path" exactly as in the spec.
+##
+## Recipe `request` fields (only `operation` is required):
+##   service      defaults to the owning service. REQUIRED when the recipe lives in a named profile.
+##   operation    "METHOD /path"
+##   path / query / headers / cookies     maps of name -> value for that operation's parameters
+##   body         exactly ONE of the four forms below
+##   auth         auth methods for the recipe call. Defaults to ANONYMOUS: the owner's bearer and cookie jar are
+##                NOT inherited. Declare what to send explicitly. `cookies: true` uses the current jar.
+## Values may be literals, { fromEnv }, { fromFile, pointer? } or { fromCredential }. To send an object that
+## contains one of those reserved keys as plain data, wrap it: { literal: { fromEnv: "text" } }.
+##
+## Body alternatives (pick ONE per recipe, never several together):
+##   body: { json: { name: demo } }                   # add contentType next to json if the API needs another type
+##   body:                                            # application/x-www-form-urlencoded
+##     form:
+##       grant_type: client_credentials
+##       client_id: { fromEnv: CLIENT_ID }
+##   body:                                            # multipart; file paths are fixed config, never from credentials
+##     multipart:
+##       fields: { note: demo }
+##       files: [{ field: document, path: ./fixtures/demo.pdf }]   # must be under files.uploadRoots
+##   body: { binary: { file: ./fixtures/demo.bin, contentType: application/octet-stream } }
+##
+## Capture: `credentials` maps a credential name to where it is read from, and/or `cookies: true`.
+##   accessToken: { bodyPointer: /session/accessToken }   # JSON Pointer into the JSON response body
+##   csrf: { header: X-CSRF-Token }                        # response header, kept as-is (including "Bearer ")
+## A scalar capture must be a non-empty string or a finite number. If any required capture is missing, NOTHING
+## is applied. A credential that is not captured again keeps its old value, so to rotate a refresh token you
+## must list it in the refresh capture. A capture needs at least one credential or `cookies: true`.
+## `successStatuses: [200, 201]` (next to request/capture) overrides the default 200-299. Recipes never follow
+## redirects and never run prerequisite recipes. While one runs, business calls fail with AUTH_RECOVERING. A
+## failed refresh is not retried in a loop; call authenticate with the action to retry.
+## Checked at startup: `authentication` may only use credentials that have an INITIAL value (under
+## `credentials`), not values it captures itself. `refresh` and `auth` may also use captured ones. Capturing
+## cookies requires `auth.cookies: true` on the same owner.
+##
+## Grant code + rotating refresh token + CSRF header + cookies. Business requests send the access token, the
+## CSRF header and the cookie jar. The refresh token is captured but never sent on business requests; only the
+## refresh recipe uses it. Listing refreshToken in the refresh capture makes it ROTATE on every refresh.
+## `authentication` starts a fresh cookie jar; `refresh` keeps and updates the existing one.
+#   accounts:
+#     baseUrl: https://accounts.dev.example.test
+#     spec: https://accounts.dev.example.test/v3/api-docs
+#     auth:
+#       bearer: { token: { fromCredential: accessToken } }
+#       apiKey: { header: X-CSRF-Token, value: { fromCredential: csrf } }
+#       cookies: true
+#     credentials:
+#       grantCode: { fromEnv: ACCOUNTS_GRANT_CODE }
+#     authentication:
+#       request:
+#         operation: POST /session/exchange
+#         body: { json: { grantCode: { fromCredential: grantCode } } }
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /session/accessToken }
+#           refreshToken: { bodyPointer: /session/refreshToken }
+#           csrf: { header: X-CSRF-Token }
+#         cookies: true
+#     refresh:
+#       request:
+#         operation: POST /session/refresh
+#         body: { form: { refresh_token: { fromCredential: refreshToken } } }
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /access_token }
+#           refreshToken: { bodyPointer: /refresh_token }     # listed = rotated
+
+##@ scenario: cookie-login
+## Cookie-session login (no tokens). `auth: { cookies: true }` enables the auth's own cookie jar; it is not a raw
+## Cookie string. The login captures Set-Cookie values into that jar. While the jar is empty the service counts
+## as not logged in. To import cookies you already have, use a session (see the SESSIONS note near the end).
+#   cookieLogin:
+#     baseUrl: https://portal.dev.example.test/api
+#     spec: https://portal.dev.example.test/v3/api-docs
+#     auth: { cookies: true }
+#     credentials:
+#       username: { fromEnv: PORTAL_USER }
+#       password: { fromEnv: PORTAL_PASSWORD }
+#     authentication:
+#       request:
+#         operation: POST /login
+#         body: { json: { username: { fromCredential: username }, password: { fromCredential: password } } }
+#       capture: { cookies: true }
+
+##@ scenario: client-credentials
+## Client credentials, login only (no refresh recipe). Secrets can go straight into the request body with
+## { fromEnv }, so no `credentials` block is needed. `request.auth` is anonymous by default. If the token
+## endpoint wants HTTP Basic client authentication instead of body fields, add this inside `request:`
+## (it is not inherited from the owner):
+##   auth: { basic: { username: { fromEnv: MACHINE_CLIENT_ID }, password: { fromEnv: MACHINE_CLIENT_SECRET } } }
+## Without a `refresh` recipe a 401 only reports authRecovery "not_started"; run authenticate again yourself.
+#   machine:
+#     baseUrl: https://machine.dev.example.test/api
+#     spec: https://machine.dev.example.test/v3/api-docs
+#     auth:
+#       bearer: { token: { fromCredential: accessToken } }
+#     authentication:
+#       request:
+#         operation: POST /oauth/token
+#         body:
+#           form:
+#             grant_type: client_credentials
+#             client_id: { fromEnv: MACHINE_CLIENT_ID }
+#             client_secret: { fromEnv: MACHINE_CLIENT_SECRET }
+#       successStatuses: [200]
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /access_token }
+
+##@ scenario: seeded-refresh
+## Seeded refresh: you already hold an access token AND a refresh token. There is no `authentication` recipe.
+## Both tokens are INITIAL credentials read from the environment. After a 401, the refresh recipe exchanges the
+## refresh token and captures the new pair. Caveats:
+##   - Rotated values live in the server's memory only. Nothing is written back to the env var or any file.
+##     After a restart the original seed is read again, which an API that rotates tokens may already reject.
+##   - `authenticate` WITHOUT action "refresh" (and with no authentication recipe) reloads the sources and puts
+##     the original seed back over any captured credential of the same name. Use action "refresh" to rotate;
+##     use plain authenticate only to re-read env/files you changed.
+#   seeded:
+#     baseUrl: https://seeded.dev.example.test/api
+#     spec: https://seeded.dev.example.test/v3/api-docs
+#     auth:
+#       bearer: { token: { fromCredential: accessToken } }
+#     credentials:
+#       accessToken: { fromEnv: SEEDED_ACCESS_TOKEN }
+#       refreshToken: { fromEnv: SEEDED_REFRESH_TOKEN }
+#     refresh:
+#       request:
+#         operation: POST /token/refresh
+#         body: { form: { refresh_token: { fromCredential: refreshToken } } }
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /access_token }
+#           refreshToken: { bodyPointer: /refresh_token }
+
+##@ scenario: profile-single requires: profiles
+## ==== SHARED NAMED PROFILES: several accounts, or one login shared by several services ====
+## These services reference entries of the top-level `profiles:` block (scenario `profiles`). A service that
+## references profiles must not have its own `credentials`, `authentication` or `refresh`; they live in the
+## profile. One profile: two services using the same profile share its credentials, cookie jar and refresh task.
+#   reports:
+#     baseUrl: https://reports.dev.example.test/api
+#     spec: ./specs/reports.yaml
+#     auth: { profile: qa }
+
+##@ scenario: profiles-default requires: profiles
+## Several allowed profiles with a default. Calls without an auth choice use `qa`. To act as `admin`, pass
+## "auth":{"mode":"profile","profileId":"admin"} to invoke_operation. Only listed profiles are usable here.
+#   ordersMulti:
+#     baseUrl: https://orders.dev.example.test/api
+#     spec: ./specs/orders.yaml
+#     auth:
+#       profiles: [qa, admin]
+#       defaultProfile: qa                # must be one of `profiles`
+
+##@ scenario: profiles-no-default requires: profiles
+## Several allowed profiles, NO default. Requests are anonymous unless the caller names a profile. The first
+## profile is never picked for you, and auth tools aimed at this service ask which profile you mean.
+#   ordersNoDefault:
+#     baseUrl: https://orders.dev.example.test/api
+#     spec: ./specs/orders.yaml
+#     auth:
+#       profiles: [qa, admin]
+
+##@ scenario: identity-service
+## Identity service used by a profile's login (see `profiles`, profile `sso`). A profile recipe must name its
+## `request.service`; it may point to a separate service like this one. That only lets the recipe call that one
+## operation; it does not automatically attach the profile's business credentials. It is anonymous here because
+## the recipe call is anonymous by default.
+#   identity:
+#     baseUrl: https://identity.dev.example.test
+#     spec: https://identity.dev.example.test/v3/api-docs
+
+##@ scenario: billing-sso requires: profiles
+## A business service that uses the shared `sso` profile (login and refresh live in the profile).
+#   billing:
+#     baseUrl: https://billing.dev.example.test/api
+#     spec: https://billing.dev.example.test/v3/api-docs
+#     auth: { profile: sso }
+
+##@ scenario: local-spec-ca
+## ==== SPECS AND TLS: where the contract comes from, and how it is fetched ====
+## Local spec file + API key from a secrets file + private CA. `spec` as a string is a URL when it starts with
+## http:// or https://, otherwise a file path. secrets.json is a JSON file like { "catalog": "the-api-key" }.
+## Keep it out of git and chmod 600. `tls` is per service; caFile is added to the default trust store, so public
+## CAs still work. `tls: { verify: false }` turns verification off for THIS service only and warns; use it only in
+## a test environment. It is not the fix for a certificate problem. No tool changes TLS at call time.
+#   catalog:
+#     baseUrl: https://catalog.dev.example.test
+#     spec: ./specs/catalog.yaml
+#     auth:
+#       apiKey:
+#         header: X-API-Key
+#         value: { fromFile: ./secrets.json, pointer: /catalog }
+#     tls:
+#       caFile: ./certs/dev-ca.pem
+
+##@ scenario: protected-spec
+## Protected remote spec and $ref origins. Use the object form when the spec download needs credentials or its
+## $refs live on other origins. Spec-fetch auth is separate from business auth and uses only STATIC secrets
+## (literal/fromEnv/fromFile): no fromCredential, no cookie jar, no recipe. Its credentials go only to the
+## spec's own origin, never to another origin reached through a $ref. Spec fetches do not follow redirects.
+## Spec-fetch auth can also be basic: { username, password } or apiKey: { header: X-Docs-Key, value: ... }.
+## `allowedOrigins` lists EXTRA origins ($ref targets) that may be fetched; the spec URL's own origin is always
+## allowed. A remote spec can never reference local files.
+#   privateApi:
+#     baseUrl: https://api.dev.example.test
+#     spec:
+#       source: { url: https://docs.dev.example.test/openapi.json }
+#       auth:
+#         bearer: { token: { fromEnv: DOCS_TOKEN } }
+#       allowedOrigins: [https://schemas.dev.example.test]
+#     auth:
+#       bearer: { token: { fromEnv: API_TOKEN } }
+
+##@ scenario: split-spec
+## Local spec that references files in other folders. A local $ref must stay inside the allowed roots. The
+## directory of the spec file itself is always its root; `roots` adds more directories (for example a shared
+## schema folder).
+#   splitSpec:
+#     baseUrl: http://localhost:8081/api
+#     spec:
+#       source: { file: ./specs/split/openapi.yaml }
+#       roots: [./specs/shared]
+
+##@ scenario: profiles requires: identity-service
+## ==== TOP-LEVEL SECTIONS (each appears once; enable only what you need) ====
+## PROFILES. A profile is an auth owner several services can select. It has the same shape as an inline service
+## owner: `auth` (required), plus optional `credentials`, `authentication` and `refresh`. Recipes in a profile
+## MUST set `request.service` (here: the `identity` service, scenario `identity-service`). This is the only
+## block that defines profiles, so every profile used above is defined once, here. Control a profile directly
+## with {"profile":"sso"} on authenticate / get_auth_status (never together with "service"). A profile is
+## usable only on services that list it.
 # profiles:
 #   qa:
 #     auth: { bearer: { token: { fromEnv: QA_TOKEN } } }
-# and a service selects them with `auth: { profile: qa }` or `auth: { profiles: [qa, admin], defaultProfile: qa }`.
+#   admin:
+#     auth: { bearer: { token: { fromEnv: ADMIN_TOKEN } } }
+#   sso:                                    # login + rotating refresh against the shared identity service
+#     auth:
+#       bearer: { token: { fromCredential: accessToken } }
+#     credentials:
+#       clientId: { fromEnv: SSO_CLIENT_ID }
+#       clientSecret: { fromEnv: SSO_CLIENT_SECRET }
+#     authentication:
+#       request:
+#         service: identity
+#         operation: POST /oauth/token
+#         body:
+#           form:
+#             grant_type: client_credentials
+#             client_id: { fromCredential: clientId }
+#             client_secret: { fromCredential: clientSecret }
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /access_token }
+#           refreshToken: { bodyPointer: /refresh_token }
+#     refresh:
+#       request:
+#         service: identity
+#         operation: POST /oauth/refresh
+#         body: { form: { refresh_token: { fromCredential: refreshToken } } }
+#       capture:
+#         credentials:
+#           accessToken: { bodyPointer: /access_token }
+#           refreshToken: { bodyPointer: /refresh_token }
 
-files:
-  uploadRoots: [./fixtures]
-  exportRoots: [./exports]
+##@ scenario: session-sources
+## SESSIONS (OTP, SSO, tokens a person hands you) are runtime, not configuration. They are created while the
+## server runs, with `invoke_operation` (capture) or `manage_session`. They are bound to one service, live in
+## memory, never refresh themselves and disappear when the process ends. The server never requests an OTP,
+## polls, opens a browser or solves a CAPTCHA. The only configuration involved is this optional catalog of
+## secret SOURCES that `manage_session` may import by id. Only env and file sources are allowed here (no
+## literals, no fromCredential). Inline secrets in a service or profile, and captured refresh tokens, are NOT in
+## the catalog automatically. At runtime: manage_session {"action":"create","service":"orders",
+## "credentialSourceIds":[{"sourceId":"qaSessionToken","type":"bearer"}]}
+# credentialSources:
+#   qaSessionToken: { fromEnv: QA_SESSION_TOKEN }
+#   qaSessionCookie: { fromFile: ./secrets.json, pointer: /qaSessionCookie }
 
-encodedFields:
-  - { service: orders, pointer: /data/*/thumbnail, encoding: base64, mediaType: image/png }
+##@ scenario: files
+## FILES: upload/export folders and where artifacts are stored. uploadRoots and exportRoots default to empty,
+## which DISABLES upload and export. Create the folders before enabling them: --check reports a missing
+## directory as an error. `artifactRoot` may be missing; the server creates it. Without it, artifacts go to a
+## temporary folder. Secret files and the config file itself are protected from upload and export.
+# files:
+#   uploadRoots: [./fixtures]
+#   exportRoots: [./exports]
+#   artifactRoot: ./runtime-artifacts
+
+##@ scenario: encoded-fields
+## ENCODED FIELDS: tell the server which response fields hold base64, so they are shown as binary instead of a
+## huge string. `pointer` is a JSON Pointer into the response body; `*` matches exactly one path segment.
+## `service` and `operation` ("METHOD /path") are optional filters. `encoding` can only be base64 (the default).
+## A string that merely looks like base64 is never asserted to be base64 without a hint.
+# encodedFields:
+#   - { service: orders, pointer: /data/*/thumbnail, encoding: base64, mediaType: image/png }
+#   - { service: orders, operation: "GET /reports/{id}", pointer: /pdf, mediaType: application/pdf }
+
+##@ scenario: limits
+## LIMITS: change only what you need. The values below ARE the defaults, so enabling this block unchanged changes
+## nothing. Each is a positive integer; the maximum is in the trailing comment. Byte budgets are input budgets,
+## not heap/RSS limits.
+# limits:
+#   requestTimeoutMs: 30000           # one request including redirect hops; max 600000
+#   maxConcurrentRequests: 8          # normal requests; max 256
+#   recipeConcurrency: 2              # separate lane for login/refresh recipes; max 64
+#   specDocumentBytes: 10485760       # one spec document (10 MiB); max 536870912
+#   refGraphDocuments: 100            # documents in the $ref graph; max 10000
+#   refGraphBytes: 52428800           # total bytes in the $ref graph (50 MiB); max 2147483648
+#   refGraphDepth: 64                 # $ref and template depth; max 1000
+#   responseBytes: 52428800           # one response (50 MiB); beyond it the body is partial; max 4294967296
+#   uploadBytes: 52428800             # one upload (50 MiB); max 4294967296
+#   sessionArtifactBytes: 262144000   # total artifact quota (250 MiB); max 17179869184
+#   inlineStringBytes: 4096           # strings longer than this are not shown inline; max 1048576
+#   toolOutputBytes: 32768            # budget of one tool result; max 4194304
+#   artifactPageBytes: 16384          # one read_artifact page; max 1048576
+#   maxRedirects: 5                   # redirects followed when enabled; max 20

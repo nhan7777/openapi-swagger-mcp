@@ -9,10 +9,16 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for the npm OIDC exchange
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
   publish:
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write # only the publishing job needs OIDC
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,13 +43,7 @@ jobs:
           }
       - run: npm ci
       - run: npm run build
-      - run: npm run typecheck
-      - run: npm run gen:schema
-      - run: npm test
-      - run: npm run test:integration
-      - run: npm run smoke
       - run: npm run verify:package
-      - run: npm audit --omit=dev --audit-level=high
       - name: Publish the verified tarball
         run: |
           set -euo pipefail

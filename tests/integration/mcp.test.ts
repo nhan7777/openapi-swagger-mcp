@@ -54,6 +54,35 @@ function syntheticSpec(n: number): Record<string, unknown> {
 }
 
 describe('stable tool surface', () => {
+  test('auth tools advertise their targets and enforce exactly one target over stdio', async () => {
+    const p = writeProject(syntheticSpec(1), {
+      profiles: { qa: { auth: { bearer: { token: 'synthetic-token' } } } },
+    }, { auth: { profile: 'qa' } });
+    const s = await connectCli(p.config);
+    sessions.push(s);
+    const tools = (await s.client.listTools()).tools;
+    for (const name of ['authenticate', 'get_auth_status']) {
+      const schema = tools.find((t) => t.name === name)!.inputSchema;
+      expect(schema.type).toBe('object');
+      expect(schema.properties).toMatchObject({ service: { type: 'string', minLength: 1 }, profile: { type: 'string', minLength: 1 } });
+      if (name === 'authenticate') expect(schema.properties).toHaveProperty('action.enum', ['authenticate', 'refresh']);
+      for (const args of [{}, { service: 'api', profile: 'qa' }, { service: '' }, { profile: 'qa', extra: true }]) {
+        const rejected = await s.client.callTool({ name, arguments: args });
+        expect(rejected.isError).toBe(true);
+        expect(rejected.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining('Invalid arguments') })]));
+      }
+      for (const target of [{ service: 'api' }, { profile: 'qa' }]) {
+        const result = await s.call(name, target);
+        expect(result.isError).toBe(false);
+        expect(result.data).toMatchObject({ target: { profile: 'qa' }, state: 'ready' });
+      }
+    }
+    const refresh = await s.call('authenticate', { profile: 'qa', action: 'refresh' });
+    expect(refresh.data.error.code).toBe('AUTH_REFRESH_UNAVAILABLE');
+    const invalidAction = await s.client.callTool({ name: 'authenticate', arguments: { profile: 'qa', action: 'invalid' } });
+    expect(invalidAction.isError).toBe(true);
+  });
+
   test('tools/list is byte-identical for 10 and 1000 operations; discovery output is measured', async () => {
     const small = writeProject(syntheticSpec(10));
     const large = writeProject(syntheticSpec(1000));

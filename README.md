@@ -1,8 +1,14 @@
 # openapi-swagger-mcp
 
-A local MCP server that lets an AI agent read Swagger 2.0, OpenAPI 3.0 and OpenAPI 3.1 specs, find operations, inspect their contracts and send real requests to the dev/UAT services you configure.
+A local MCP server that connects your AI assistant to the dev/UAT APIs you configure. Ask it to find an endpoint, explain its inputs, send a request and inspect the response using your Swagger 2.0 or OpenAPI 3.0/3.1 spec.
 
-You describe your APIs and how to authenticate in one YAML or JSON file. The agent works through **ten fixed tools**, so the tool count does not grow with the number of endpoints.
+For example: **“Find the order details endpoint and explain the required parameters before calling it.”**
+
+You configure the API addresses and authentication in a YAML or JSON file. Your MCP client starts the server, and your assistant uses its **ten fixed tools** regardless of how many endpoints you have.
+
+**New here?** Follow [Quick start](#quick-start), then try [Everyday usage](#everyday-usage). You do not need to write tool calls yourself.
+
+**Already connected?** Jump to [Choose your next step](#choose-your-next-step), [Troubleshooting](#troubleshooting) or [Tool reference](#tool-reference).
 
 ## Before you start
 
@@ -36,6 +42,8 @@ services:
 
 The URLs above are examples. They only work if your own API is running there, so replace them with your dev/UAT addresses.
 
+**Before continuing:** replace both URLs and save the file. Note its absolute path; you will use that same path in the next two steps.
+
 ### 2. Check the config
 
 ```bash
@@ -43,6 +51,8 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.1 --config /absolute/path/config.dev.ya
 ```
 
 `ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
+
+**Expected result:** the command exits with code `0` and the report contains `"ok": true`. If it does not, fix the reported field before connecting your client.
 
 ### 3. Add the server to your MCP client
 
@@ -68,11 +78,77 @@ The file name and location depend on your client. If your client has a form for 
 
 This server uses **stdio**: the client starts the process and talks to it over stdin/stdout. There is no web UI and no HTTP port. stdout is reserved for MCP traffic and logs go to stderr. Do not add `--check` to the client entry, because that mode exits after checking.
 
-### 4. Try it
+### 4. Connect and check API availability
 
-Once the client is connected, ask:
+Save the client configuration and restart or reconnect the MCP server in your client. Ask:
 
-> List the configured APIs. Find the operation that returns order details in the orders service, read its contract, and propose a request. Do not send anything until I give you an order ID.
+> List the configured APIs and report whether the orders spec loaded. If it failed, explain the error without making any business API requests.
+
+**Expected result:** the assistant finds `orders`, its spec revision and its operation count. Unlike `--check`, this step loads the spec. If the service is unavailable, follow [Troubleshooting](#troubleshooting).
+
+### 5. Inspect your first endpoint
+
+Ask:
+
+> Find the operation that returns order details in the orders service. Read its contract and explain the required inputs. Do not send the request yet.
+
+**Expected result:** an operation such as `GET /orders/{id}` and the inputs declared by your own spec. The example path is not guaranteed to exist in your API.
+
+You are now ready to use the server. If the endpoint requires a token, [configure authentication](#authentication) before calling it.
+
+## Choose your next step
+
+Read only the section that matches your task:
+
+| I want to… | Start here |
+|---|---|
+| Ask the assistant to inspect or call an API | [Everyday usage](#everyday-usage) |
+| Add services or dev/UAT addresses | [Configure your APIs](#configure-your-apis) |
+| Use an existing token, password, API key or cookie | [Static credentials](#static-credentials) |
+| Keep a token in a local JSON file | [Secret sources](#secret-sources) |
+| Share credentials across services or choose an account | [Multiple accounts and shared profiles](#multiple-accounts-and-shared-profiles) |
+| Log in or refresh an expired token | [Login and refresh](#login-and-refresh) |
+| Work through OTP or import a session | [OTP, SSO and interactive sessions](#otp-sso-and-interactive-sessions) |
+| Read a large response or save a returned file | [Large responses and files](#large-responses-and-files) |
+| Fix a connection, spec or auth error | [Troubleshooting](#troubleshooting) |
+| Configure protected specs, TLS or limits | [Advanced configuration and limitations](#advanced-configuration-and-limitations) |
+| Copy configuration for a supported scenario | [Configuration cookbook](examples/config.example.yaml) |
+
+## Everyday usage
+
+Use normal language in your MCP client. Replace service names, IDs and paths in these prompts with your own. The assistant handles tool arguments; inspect [Request and response reference](#request-and-response-reference) when you need exact syntax.
+
+### Find an endpoint without sending a request
+
+> In orders, find the endpoint for order details. Read its contract and explain required parameters, authentication and expected responses. Do not call it.
+
+### Send a request and understand the result
+
+After checking the operation and providing a real test ID:
+
+> Call the order details GET operation in orders for ID demo-123. Report the HTTP status, relevant response fields and any contract diagnostics. Do not retry automatically.
+
+An HTTP response and a contract diagnostic answer different questions: the status tells you what the API returned; diagnostics tell you how the request or response compares with the spec. A successful status does not prove the response matches the contract.
+
+### Prepare a write before authorizing it
+
+> Find the create-order operation in orders. Read its contract and propose a request using the test data I provide. Show the target service and payload, then wait for my confirmation before sending.
+
+This is an instruction to your assistant, not a server-enforced approval gate. POST, PUT, PATCH and DELETE requests can change real data.
+
+### Choose a service or account explicitly
+
+> Use orders-uat for this task. Inspect its order details contract first. Do not call orders-dev.
+
+If you configured multiple profiles:
+
+> Use the qa profile allowed by orders. Check its auth status without showing credentials, then explain whether it is ready for a request.
+
+### Inspect more of a response
+
+> Read the returned artifact at /data/items. If it is paginated, continue using nextOffset. Report whether the response body is complete.
+
+For files, configure [export roots](#export-a-file) first and give the assistant a new destination path. Export never overwrites an existing file.
 
 ## Configure your APIs
 
@@ -93,13 +169,13 @@ services:
     spec: ./specs/catalog.yaml
 ```
 
-YAML (`.yaml`, `.yml`) and JSON are both supported. For JSON, add `"$schema": "/absolute/path/to/config.schema.json"` so your editor can suggest keys. See the [complete example config](examples/config.example.yaml) and the [JSON Schema](config.schema.json).
+YAML (`.yaml`, `.yml`) and JSON are both supported. For JSON, add `"$schema": "/absolute/path/to/config.schema.json"` so your editor can suggest keys. The [configuration cookbook](examples/config.example.yaml) starts with an anonymous service and offers opt-in examples by scenario. Copy only the blocks you need; the [JSON Schema](config.schema.json) is the field reference.
 
 Key rules:
 
 - Relative paths in the config resolve from the **directory that contains the config file**, not from where you run the command.
 - **The URL comes from `baseUrl`.** The operation `GET /orders/{id}` with `baseUrl: https://host/api/v1` calls `https://host/api/v1/orders/{id}`. The server ignores `servers`, `host` and `basePath` in the spec. `baseUrl` must not contain a username, password, query or fragment.
-- **One environment per process.** For dev and UAT, create two config files and two MCP entries (for example `api-dev` and `api-uat`). Each process has its own credentials, cookies and artifacts. There is no `--env` flag and no tool for switching environments.
+- **Environments are just services.** The server has no environment concept, no `--env` flag and no switching tool. Give each environment's service a unique id (for example `orders-dev` and `orders-uat`) and tell the agent which one to use. Services that share one identity provider can share a [profile](#multiple-accounts-and-shared-profiles), so they share one token pair and one refresh. If environments must stay isolated, use separate config files and MCP entries; each process then has its own credentials, cookies and artifacts.
 - A config change needs a restart of the MCP process. `refresh_specs` only reloads specs.
 
 ### Pass a token from the environment
@@ -144,121 +220,13 @@ node /absolute/path/to/openapi-swagger-mcp/dist/cli.js --config /absolute/path/c
 
 Do not install the unscoped npm package `openapi-swagger-mcp`. It belongs to someone else and is a different project. This package is `@nhan7777/openapi-swagger-mcp`.
 
-## Discover and call an operation
-
-### The normal flow
-
-| Step | Tool | Example arguments |
-|---|---|---|
-| See services and revisions | `list_apis` | `{}` |
-| Find an operation | `search_operations` | `{"service":"orders","query":"order detail","limit":5}` |
-| Read its contract | `get_operation_schema` | `{"service":"orders","operation":"GET /orders/{id}","revision":"<revision-you-just-received>"}` |
-| Send the request | `invoke_operation` | See below |
-
-A complete `invoke_operation` call:
-
-```json
-{
-  "service": "orders",
-  "operation": "GET /orders/{id}",
-  "revision": "<revision-you-just-received>",
-  "input": {
-    "path": { "id": "demo-123" },
-    "query": { "includeItems": true },
-    "headers": { "X-Request-ID": "demo-request" }
-  }
-}
-```
-
-`operation` is the key returned by search, usually `METHOD /path`. It is not the `operationId`. `revision` is the spec revision, which stops you calling an operation based on an outdated contract. When the spec changes, call `refresh_specs` with `{"service":"orders"}`, then search or read the contract again to get the new revision. A failed refresh keeps the last valid snapshot.
-
-`search_operations` accepts `service`, `method`, `tag`, `includeDeprecated`, `limit` and `cursor`. Pass `nextCursor` with the same query to get the next page. Changing the query or the revision invalidates an old cursor.
-
-### Request bodies
-
-The snippets below are **fragments** that go inside `input`. They are not complete tool calls. A request has at most one body type.
-
-Note the difference from auth recipes: `invoke_operation.input.body` uses the `json.value` and `form.fields` wrappers, while a recipe `body` uses plain `json` and `form` (see [Login and refresh](#login-and-refresh)).
-
-JSON:
-
-```json
-{ "body": { "json": { "value": { "name": "demo", "quantity": 2 } } } }
-```
-
-Form (`application/x-www-form-urlencoded`):
-
-```json
-{ "body": { "form": { "fields": { "name": "demo", "tags": ["a", "b"] } } } }
-```
-
-You can set `contentType` inside `json` or `form` to pick one of the media types the operation declares.
-
-For multipart and binary uploads, first allow directories in the config and create them:
-
-```yaml
-files:
-  uploadRoots: [./fixtures]
-  exportRoots: [./exports]
-```
-
-Then pass absolute paths in the tool call.
-
-Multipart:
-
-```json
-{
-  "body": {
-    "multipart": {
-      "fields": { "description": "demo" },
-      "files": [
-        { "field": "document", "path": "/absolute/path/fixtures/demo.pdf", "filename": "demo.pdf", "contentType": "application/pdf" }
-      ]
-    }
-  }
-}
-```
-
-Binary:
-
-```json
-{ "body": { "binary": { "file": "/absolute/path/fixtures/demo.bin", "contentType": "application/octet-stream" } } }
-```
-
-The multipart `files` array may repeat the same `field`. Files outside `uploadRoots`, symlinks that escape a root, and protected files are refused. The media type must match what the operation declares, so read the contract before sending.
-
-### Choosing auth, and negative testing
-
-`invoke_operation.auth` has four modes:
-
-| Mode | Behavior |
-|---|---|
-| `{"mode":"default"}` or no `auth` | Use the service's default auth, or anonymous if it has none |
-| `{"mode":"profile","profileId":"qa"}` | Use a named profile the service allows |
-| `{"mode":"session","sessionId":"<id>"}` | Use an interactive session bound to the same service |
-| `{"mode":"anonymous"}` | Inherit no credentials or cookies. Data you pass explicitly in `input` is still sent |
-
-To test a wrong token, pass your own `input.headers.Authorization`. It overrides the matching credential for that request only, leaves managed credentials untouched, and does not trigger an automatic refresh.
-
-The server **serializes what you give it and does not fix your data**. It adds no defaults, does no type coercion, and does not strip unknown fields or `null`. Omitting the body is different from sending `{"json":{"value":null}}`, which sends the bytes `null`. HTTP 4xx/5xx responses are real results and are not turned into "tool failed validation" errors.
-
-Requests that cannot be sent safely are blocked locally: a missing path parameter, a path escape, CR/LF in a header, a media type the operation does not declare, or an attempt to override headers the transport manages.
-
-### Reading the result
-
-- `sent: false`: the request was not sent. Look at `error.code` and `error.message`.
-- `http.status` and `http.headers`: the actual HTTP outcome.
-- `bodyView`: the part of the response meant for the agent to read.
-- `diagnostics.request` and `diagnostics.response`: spec-based checks, for diagnosis only. They do not replace the HTTP outcome. States are `valid`, `invalid`, `not_available` and `error`.
-- `bodyComplete: false`: the body is partial because of a limit or a stream error. Do not conclude the whole response was valid.
-- `authRecovery`: the state of a background refresh after a 401. It does not mean the request was replayed.
-- Network, TLS and timeout failures do not produce a fake HTTP status. `error.mayHaveBeenSent` says whether the request may already have left the machine. Be careful about retrying write operations.
-
-Redirects are not followed by default. With `followRedirects: true`, only same-origin redirects are followed, within a limit: 303, and POST after 301/302, become GET; 307/308 keep the method and body. Credentials are never forwarded to another origin.
-
 ## Authentication
 
 Pick the approach that matches your API:
+
+Start with the simplest option your API supports. A ready token needs only static auth; recipes and sessions are optional. The YAML examples in this section are configuration blocks to merge at the stated location, not commands to run. Tool examples are JSON arguments for the assistant, not shell commands.
+
+For `authenticate` and `get_auth_status`, provide exactly one target: `{"service":"orders"}` or `{"profile":"qa"}`, never both. `authenticate` also accepts `"action":"refresh"`; omitting `action` selects authentication (or reloading static sources when there is no login recipe).
 
 | You have... | Use |
 |---|---|
@@ -268,6 +236,8 @@ Pick the approach that matches your API:
 | OTP, SSO, or a token you receive interactively | [OTP, SSO and interactive sessions](#otp-sso-and-interactive-sessions) |
 
 ### Static credentials
+
+Place one of these `auth` blocks inside a service, alongside `baseUrl` and `spec` (for example under `services.orders`). For a shared identity, put it inside a named [profile](#multiple-accounts-and-shared-profiles) instead.
 
 **Bearer token**
 
@@ -329,6 +299,35 @@ The same syntax works for `token`, `value`, `username`, `password` and the initi
 | `{ fromCredential: accessToken }` | Use a named value from the current auth, usually captured by a recipe |
 
 `fromCredential` cannot be used in initial `credentials`, in catalog `credentialSources`, or in spec-fetch auth. Env and file values for a binding must be strings; objects and numbers are not silently converted. A missing source never silently falls back to anonymous. Secret files are protected from upload and export, but you are responsible for their permissions, and you should not commit them.
+
+### Multiple accounts and shared profiles
+
+```yaml
+profiles:
+  qa:
+    auth: { bearer: { token: { fromEnv: QA_TOKEN } } }
+  admin:
+    auth: { bearer: { token: { fromEnv: ADMIN_TOKEN } } }
+
+services:
+  orders:
+    baseUrl: https://orders.dev.example.test
+    spec: ./orders.json
+    auth:
+      profiles: [qa, admin]
+      defaultProfile: qa
+  reports:
+    baseUrl: https://reports.dev.example.test
+    spec: ./reports.json
+    auth: { profile: qa }
+```
+
+- A call to `orders` with no auth choice uses `qa`. To use `admin`, pass `"auth":{"mode":"profile","profileId":"admin"}` to `invoke_operation`.
+- If a service lists `profiles` but has no `defaultProfile`, requests are anonymous by default. The first profile is never picked for you. Auth tools aimed at that service ask you to name a profile.
+- To control a profile directly, call `authenticate` or `get_auth_status` with `{"profile":"qa"}`. Do not pass both `service` and `profile`.
+- A profile is usable only on services that reference it. Two services using `qa` share the same credentials, cookie jar and refresh task. Cookies are still scoped by domain and path.
+- A named profile can have its own `credentials`, `authentication` and `refresh`. For recipes, set `request.service` explicitly; it may point to a separate identity service. That only lets the recipe call that operation. It does not give the identity service your business credentials.
+- A service that references a profile must not also have its own `credentials`, `authentication` or `refresh`. Put them in the profile.
 
 ### Login and refresh
 
@@ -433,35 +432,6 @@ body: { binary: { file: ./fixtures/demo.bin, contentType: application/octet-stre
 ```
 
 File paths in recipes are fixed configuration. They cannot come from credential substitution.
-
-### Multiple accounts and shared profiles
-
-```yaml
-profiles:
-  qa:
-    auth: { bearer: { token: { fromEnv: QA_TOKEN } } }
-  admin:
-    auth: { bearer: { token: { fromEnv: ADMIN_TOKEN } } }
-
-services:
-  orders:
-    baseUrl: https://orders.dev.example.test
-    spec: ./orders.json
-    auth:
-      profiles: [qa, admin]
-      defaultProfile: qa
-  reports:
-    baseUrl: https://reports.dev.example.test
-    spec: ./reports.json
-    auth: { profile: qa }
-```
-
-- A call to `orders` with no auth choice uses `qa`. To use `admin`, pass `"auth":{"mode":"profile","profileId":"admin"}` to `invoke_operation`.
-- If a service lists `profiles` but has no `defaultProfile`, requests are anonymous by default. The first profile is never picked for you. Auth tools aimed at that service ask you to name a profile.
-- To control a profile directly, call `authenticate` or `get_auth_status` with `{"profile":"qa"}`. Do not pass both `service` and `profile`.
-- A profile is usable only on services that reference it. Two services using `qa` share the same credentials, cookie jar and refresh task. Cookies are still scoped by domain and path.
-- A named profile can have its own `credentials`, `authentication` and `refresh`. For recipes, set `request.service` explicitly; it may point to a separate identity service. That only lets the recipe call that operation. It does not give the identity service your business credentials.
-- A service that references a profile must not also have its own `credentials`, `authentication` or `refresh`. Put them in the profile.
 
 ### OTP, SSO and interactive sessions
 
@@ -636,6 +606,118 @@ The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and 
 
 **Restart or refresh?** Config changes need a restart of the MCP process. `refresh_specs` only reloads specs. `authenticate` without a recipe reloads static auth sources, not the whole config.
 
+## Request and response reference
+
+### The normal flow
+
+| Step | Tool | Example arguments |
+|---|---|---|
+| See services and revisions | `list_apis` | `{}` |
+| Find an operation | `search_operations` | `{"service":"orders","query":"order detail","limit":5}` |
+| Read its contract | `get_operation_schema` | `{"service":"orders","operation":"GET /orders/{id}","revision":"<revision-you-just-received>"}` |
+| Send the request | `invoke_operation` | See below |
+
+A complete `invoke_operation` call:
+
+```json
+{
+  "service": "orders",
+  "operation": "GET /orders/{id}",
+  "revision": "<revision-you-just-received>",
+  "input": {
+    "path": { "id": "demo-123" },
+    "query": { "includeItems": true },
+    "headers": { "X-Request-ID": "demo-request" }
+  }
+}
+```
+
+`operation` is the key returned by search, usually `METHOD /path`. It is not the `operationId`. `revision` is the spec revision, which stops you calling an operation based on an outdated contract. When the spec changes, call `refresh_specs` with `{"service":"orders"}`, then search or read the contract again to get the new revision. A failed refresh keeps the last valid snapshot.
+
+`search_operations` accepts `service`, `method`, `tag`, `includeDeprecated`, `limit` and `cursor`. Pass `nextCursor` with the same query to get the next page. Changing the query or the revision invalidates an old cursor.
+
+### Request bodies
+
+The snippets below are **fragments** that go inside `input`. They are not complete tool calls. A request has at most one body type.
+
+Note the difference from auth recipes: `invoke_operation.input.body` uses the `json.value` and `form.fields` wrappers, while a recipe `body` uses plain `json` and `form` (see [Login and refresh](#login-and-refresh)).
+
+JSON:
+
+```json
+{ "body": { "json": { "value": { "name": "demo", "quantity": 2 } } } }
+```
+
+Form (`application/x-www-form-urlencoded`):
+
+```json
+{ "body": { "form": { "fields": { "name": "demo", "tags": ["a", "b"] } } } }
+```
+
+You can set `contentType` inside `json` or `form` to pick one of the media types the operation declares.
+
+For multipart and binary uploads, first allow directories in the config and create them:
+
+```yaml
+files:
+  uploadRoots: [./fixtures]
+  exportRoots: [./exports]
+```
+
+Then pass absolute paths in the tool call.
+
+Multipart:
+
+```json
+{
+  "body": {
+    "multipart": {
+      "fields": { "description": "demo" },
+      "files": [
+        { "field": "document", "path": "/absolute/path/fixtures/demo.pdf", "filename": "demo.pdf", "contentType": "application/pdf" }
+      ]
+    }
+  }
+}
+```
+
+Binary:
+
+```json
+{ "body": { "binary": { "file": "/absolute/path/fixtures/demo.bin", "contentType": "application/octet-stream" } } }
+```
+
+The multipart `files` array may repeat the same `field`. Files outside `uploadRoots`, symlinks that escape a root, and protected files are refused. The media type must match what the operation declares, so read the contract before sending.
+
+### Choosing auth, and negative testing
+
+`invoke_operation.auth` has four modes:
+
+| Mode | Behavior |
+|---|---|
+| `{"mode":"default"}` or no `auth` | Use the service's default auth, or anonymous if it has none |
+| `{"mode":"profile","profileId":"qa"}` | Use a named profile the service allows |
+| `{"mode":"session","sessionId":"<id>"}` | Use an interactive session bound to the same service |
+| `{"mode":"anonymous"}` | Inherit no credentials or cookies. Data you pass explicitly in `input` is still sent |
+
+To test a wrong token, pass your own `input.headers.Authorization`. It overrides the matching credential for that request only, leaves managed credentials untouched, and does not trigger an automatic refresh.
+
+The server **serializes what you give it and does not fix your data**. It adds no defaults, does no type coercion, and does not strip unknown fields or `null`. Omitting the body is different from sending `{"json":{"value":null}}`, which sends the bytes `null`. HTTP 4xx/5xx responses are real results and are not turned into "tool failed validation" errors.
+
+Requests that cannot be sent safely are blocked locally: a missing path parameter, a path escape, CR/LF in a header, a media type the operation does not declare, or an attempt to override headers the transport manages.
+
+### Reading the result
+
+- `sent: false`: the request was not sent. Look at `error.code` and `error.message`.
+- `http.status` and `http.headers`: the actual HTTP outcome.
+- `bodyView`: the part of the response meant for the agent to read.
+- `diagnostics.request` and `diagnostics.response`: spec-based checks, for diagnosis only. They do not replace the HTTP outcome. States are `valid`, `invalid`, `not_available` and `error`.
+- `bodyComplete: false`: the body is partial because of a limit or a stream error. Do not conclude the whole response was valid.
+- `authRecovery`: the state of a background refresh after a 401. It does not mean the request was replayed.
+- Network, TLS and timeout failures do not produce a fake HTTP status. `error.mayHaveBeenSent` says whether the request may already have left the machine. Be careful about retrying write operations.
+
+Redirects are not followed by default. With `followRedirects: true`, only same-origin redirects are followed, within a limit: 303, and POST after 301/302, become GET; 307/308 keep the method and body. Credentials are never forwarded to another origin.
+
 ## Advanced configuration and limitations
 
 ### Authentication for spec downloads and `$ref`s
@@ -768,6 +850,10 @@ npm audit --omit=dev --audit-level=high
 ```
 
 Build before the integration tests and the smoke test, because some of them run the compiled CLI over stdio. Tests use a loopback backend, synthetic data and self-signed certificates meant only for tests. No real credentials are needed. Run `npm run gen:notices` to update the third-party notices when dependencies change.
+
+`npm test` includes both unit and integration tests; `npm run test:integration` is an optional subset, not an additional gate. CI also validates the configuration cookbook with synthetic sources and rejects changes produced by `gen:schema` that were not committed. After changing the config schema, regenerate and include `config.schema.json` in your change.
+
+Tag publication calls the same nine-cell CI matrix on the tag's commit and waits for every cell to pass. Only then does the publish job build and verify its own tarball, check its SHA-256 companion and publish those exact bytes through npm trusted publishing. The tag must match the package version and its commit must belong to `main`.
 
 `npm run verify:package` needs `npm run build` first. It packs the package for real, installs the tarball into a separate consumer directory, runs `--check`, the bin shim and the smoke test against the installed copy, then audits that installed copy. Only if all of that passes does the tarball land in `.release/<name>.tgz` with a `.sha256` file. If the audit fails, the tarball is kept as evidence in `.release/diagnostic/NOT-RELEASABLE-...`. `npm pack --dry-run` is not a substitute. Verifying a local candidate this way is separate from publishing it. Publishing is a separate, deliberate registry action. The CI matrix (Ubuntu, macOS and Windows with Node 22.19.0, 22 and 24) is its own release condition.
 

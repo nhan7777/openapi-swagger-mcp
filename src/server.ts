@@ -219,11 +219,15 @@ export function createServer(app: App): McpServer {
     (a) => run(() => app.registry.refreshService(a.service)),
   );
 
-  const TargetShape = z.union([z.object({ service: z.string().min(1) }).strict(), z.object({ profile: z.string().min(1) }).strict()]);
-  const AuthenticateShape = z.union([
-    z.object({ service: z.string().min(1), action: z.enum(['authenticate', 'refresh']).optional() }).strict(),
-    z.object({ profile: z.string().min(1), action: z.enum(['authenticate', 'refresh']).optional() }).strict(),
-  ]);
+  const targetFields = {
+    service: z.string().min(1).optional().describe('Service id. Provide exactly one of service or profile.'),
+    profile: z.string().min(1).optional().describe('Profile id. Provide exactly one of service or profile.'),
+  };
+  const hasOneTarget = (a: { service?: string; profile?: string }) => (a.service !== undefined) !== (a.profile !== undefined);
+  // The SDK only publishes object-root schemas in tools/list; a root union becomes an empty object.
+  const TargetShape = z.object(targetFields).strict().refine(hasOneTarget, { message: 'Provide exactly one of service or profile' });
+  const AuthenticateShape = z.object({ ...targetFields, action: z.enum(['authenticate', 'refresh']).optional() })
+    .strict().refine(hasOneTarget, { message: 'Provide exactly one of service or profile' });
   const targetOf = (a: { service?: string; profile?: string }) => (a.profile !== undefined ? { profile: a.profile } : { service: a.service! });
   const statusOf = (p: ProfileRuntime, target: { service: string } | { profile: string }) =>
     p.status('service' in target ? app.cfg.services.get(target.service) : undefined);
