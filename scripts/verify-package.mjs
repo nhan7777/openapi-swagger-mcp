@@ -19,7 +19,7 @@ if (!npmCli) {
 const PKG_NAME = '@nhan7777/openapi-swagger-mcp';
 const BIN = 'openapi-swagger-mcp';
 const LEAK_MARKER = '.lc.frt.local';
-const ALLOWED = [/^package\.json$/, /^README\.md$/, /^LICENSE$/, /^THIRD_PARTY_NOTICES\.md$/, /^config\.schema\.json$/, /^examples\/config\.example\.yaml$/, /^dist\/.+\.js$/];
+const ALLOWED = [/^package\.json$/, /^README\.md$/, /^docs\/clients\.md$/, /^LICENSE$/, /^THIRD_PARTY_NOTICES\.md$/, /^config\.schema\.json$/, /^examples\/config\.example\.yaml$/, /^dist\/.+\.js$/];
 
 const unique = randomUUID().replaceAll('-', '');
 const secretSentinel = `VERIFY-PACKAGE-SECRET-${unique}`;
@@ -93,7 +93,7 @@ try {
   const manifest = info.files.map((f) => f.path).sort();
   const rejected = manifest.filter((p) => !ALLOWED.some((re) => re.test(p)));
   assert.deepEqual(rejected, [], `unexpected files in the tarball: ${rejected.join(', ')}`);
-  for (const must of ['package.json', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'config.schema.json', 'examples/config.example.yaml', 'dist/cli.js']) {
+  for (const must of ['package.json', 'README.md', 'docs/clients.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'config.schema.json', 'examples/config.example.yaml', 'dist/cli.js']) {
     assert.ok(manifest.includes(must), `${must} missing from the tarball`);
   }
   assert.ok(!manifest.some((p) => p.includes(unique)), 'a planted stale/ignored sentinel was packed');

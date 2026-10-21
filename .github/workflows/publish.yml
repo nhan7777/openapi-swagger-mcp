@@ -28,7 +28,6 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false # never use caching in release builds
       - name: Tag must match package.json and be reachable from main
         run: |
           set -euo pipefail
@@ -44,6 +43,20 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run verify:package
+      - name: Validate registry release metadata
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+          assert.equal(manifest.name, pkg.mcpName);
+          assert.equal(manifest.version, pkg.version);
+          assert.equal(manifest.packages.length, 1);
+          assert.equal(manifest.packages[0].registryType, 'npm');
+          assert.equal(manifest.packages[0].identifier, pkg.name);
+          assert.equal(manifest.packages[0].version, pkg.version);
+          NODE
       - name: Publish the verified tarball
         run: |
           set -euo pipefail
@@ -51,3 +64,48 @@ jobs:
           name="nhan7777-openapi-swagger-mcp-${version}.tgz"
           (cd .release && sha256sum -c "${name}.sha256")
           npm publish ".release/${name}" --ignore-scripts --access public --tag latest
+      - name: Wait for public npm metadata
+        timeout-minutes: 9
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { setTimeout as delay } from 'node:timers/promises';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const tarball = `.release/nhan7777-openapi-swagger-mcp-${pkg.version}.tgz`;
+          const integrity = `sha512-${createHash('sha512').update(fs.readFileSync(tarball)).digest('base64')}`;
+          const url = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${pkg.version}`;
+          for (let attempt = 1; attempt <= 20; attempt++) {
+            const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(10000) });
+            if (response.ok) {
+              const published = await response.json();
+              assert.equal(published.name, pkg.name);
+              assert.equal(published.version, pkg.version);
+              assert.equal(published.mcpName, pkg.mcpName);
+              assert.equal(published.dist?.integrity, integrity, 'public package differs from the verified tarball');
+              console.log(`Public npm metadata verified: ${pkg.name}@${pkg.version}`);
+              break;
+            }
+            if (response.status !== 404 || attempt === 20) {
+              throw new Error(`Public npm metadata unavailable: HTTP ${response.status}; npm may already be published. Do not republish.`);
+            }
+            await response.body?.cancel();
+            console.log(`npm is still processing the version (${attempt}/20)`);
+            await delay(15000);
+          }
+          NODE
+      - name: Install pinned MCP publisher
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/mcp-publisher.tar.gz"
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
+      - name: Publish to Official MCP Registry
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/mcp-publisher" validate
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish

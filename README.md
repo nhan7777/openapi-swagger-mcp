@@ -78,6 +78,20 @@ The file name and location depend on your client. If your client has a form for 
 
 This server uses **stdio**: the client starts the process and talks to it over stdin/stdout. There is no web UI and no HTTP port. stdout is reserved for MCP traffic and logs go to stderr. Do not add `--check` to the client entry, because that mode exits after checking.
 
+Step-by-step setup, including the exact config file, root key and restart or reconnect steps for each client, is in the [MCP client setup guide](docs/clients.md):
+
+| Client | Config format | Guide |
+|---|---|---|
+| Claude Desktop | JSON, `mcpServers` | [Claude Desktop](docs/clients.md#claude-desktop) |
+| Claude Code | CLI `claude mcp add`, or JSON `mcpServers` | [Claude Code](docs/clients.md#claude-code) |
+| Cursor | JSON, `mcpServers` | [Cursor](docs/clients.md#cursor) |
+| VS Code / GitHub Copilot | JSON, `servers` or `mcpServers` depending on the file | [VS Code and GitHub Copilot](docs/clients.md#vs-code-and-github-copilot) |
+| Windsurf | JSON, `mcpServers` | [Windsurf](docs/clients.md#windsurf) |
+| Cline | JSON, `mcpServers` | [Cline](docs/clients.md#cline) |
+| Codex CLI | TOML, `mcp_servers` | [Codex CLI](docs/clients.md#codex-cli) |
+| OMP | JSON, `mcpServers` | [OMP (Oh My Pi)](docs/clients.md#omp-oh-my-pi) |
+| Kiro | JSON, `mcpServers` | [Kiro](docs/clients.md#kiro) |
+
 ### 4. Connect and check API availability
 
 Save the client configuration and restart or reconnect the MCP server in your client. Ask:
@@ -833,6 +847,20 @@ Declare only the values you want to change. Every limit is a positive integer wi
 
 The tool count does not grow with the number of endpoints. No tool accepts an arbitrary URL to call outside the configured services, an arbitrary env or file secret name, a script, or a parameter that switches environments.
 
+## Registries and marketplaces
+
+The npm package runs **locally** in your MCP client. A catalog listing does not host it or give the catalog access to your API config. Do not upload private configs or tokens to a marketplace to make an installation work.
+
+| Channel | Status checked on 2026-10-21 | Installation |
+|---|---|---|
+| [npm](https://www.npmjs.com/package/@nhan7777/openapi-swagger-mcp) | `0.1.2` published | Follow [Quick start](#quick-start) or the [client guide](docs/clients.md) |
+| [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp) | `0.1.2` active and latest | Metadata points at the npm stdio package; provide your local `--config` path |
+| [GitHub MCP Registry](https://github.com/mcp) | Separate listing not verified | Official Registry publication does not prove immediate visibility in this gallery; manual client setup works independently |
+| [Glama](https://glama.ai/mcp/servers/nhan7777/openapi-swagger-mcp) | Repository synced; README shows `0.1.2`. Tool inspection is still pending | Follow the npm instructions; Glama's hosted deploy is not configured for this server |
+| [Smithery](https://smithery.ai/future) | Not submitted | Connection management, accounts and CLI are scheduled to shut down on 2026-10-31; no Smithery adapter or hosted endpoint is provided |
+
+The repository owner can [claim the Glama listing](https://glama.ai/mcp/servers/nhan7777/openapi-swagger-mcp/admin) through GitHub login and request a repository re-sync. No separate listing is needed. Glama may build and inspect the public repository; that is not permission to supply private API credentials or network access.
+
 ## Development
 
 Work from a source checkout:
@@ -854,6 +882,18 @@ Build before the integration tests and the smoke test, because some of them run 
 `npm test` includes both unit and integration tests; `npm run test:integration` is an optional subset, not an additional gate. CI also validates the configuration cookbook with synthetic sources and rejects changes produced by `gen:schema` that were not committed. After changing the config schema, regenerate and include `config.schema.json` in your change.
 
 Tag publication calls the same nine-cell CI matrix on the tag's commit and waits for every cell to pass. Only then does the publish job build and verify its own tarball, check its SHA-256 companion and publish those exact bytes through npm trusted publishing. The tag must match the package version and its commit must belong to `main`.
+
+After npm publication, the workflow waits up to 20 public metadata checks (15 seconds apart on HTTP 404) and verifies the published name, version, `mcpName` and tarball integrity. It then uses a checksum-pinned `mcp-publisher` and GitHub OIDC to publish `server.json` to the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp). No separate registry token is needed in CI. Registry publication is metadata distribution, not remote hosting.
+
+**If npm succeeds but registry publication fails, npm is already released.** Do not delete the tag, reuse the version or rerun npm publication to fix the catalog. Once that npm version is visible and `server.json` matches it, recover only the registry step from the repository root:
+
+```bash
+mcp-publisher validate
+mcp-publisher login github
+mcp-publisher publish
+```
+
+The login opens a device authorization flow. Never commit `.mcpregistry_*` files or paste their contents into chat. See the [official automation guide](https://modelcontextprotocol.io/registry/github-actions). Client-specific marketplaces can index or review the listing separately; being in the Official Registry does not guarantee approval or immediate visibility elsewhere.
 
 `npm run verify:package` needs `npm run build` first. It packs the package for real, installs the tarball into a separate consumer directory, runs `--check`, the bin shim and the smoke test against the installed copy, then audits that installed copy. Only if all of that passes does the tarball land in `.release/<name>.tgz` with a `.sha256` file. If the audit fails, the tarball is kept as evidence in `.release/diagnostic/NOT-RELEASABLE-...`. `npm pack --dry-run` is not a substitute. Verifying a local candidate this way is separate from publishing it. Publishing is a separate, deliberate registry action. The CI matrix (Ubuntu, macOS and Windows with Node 22.19.0, 22 and 24) is its own release condition.
 

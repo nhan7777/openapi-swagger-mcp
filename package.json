@@ -22,6 +22,7 @@
   "files": [
     "dist",
     "README.md",
+    "docs/clients.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "examples",
