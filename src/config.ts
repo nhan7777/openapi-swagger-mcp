@@ -2,10 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
-import { ConfigSchema, LimitsSchema, type AuthMethods, type InlineService, type OwnerExtras, type Recipe, type Secret, type Template } from './config-schema.js';
+import { ConfigSchema, LimitsSchema, type AuthMethods, type InlineService, type OperationRule, type OwnerExtras, type Recipe, type Secret, type Template } from './config-schema.js';
+import { normalizeOrigin } from './policy/network.js';
 import { log } from './log.js';
 import { ToolError, type Json } from './types.js';
 import { isPlainObject } from './util.js';
+import { compileSearchConfig } from './search/config.js';
+import type { SearchConfig } from './search/types.js';
 
 import type { Limits } from './config-schema.js';
 import type { z } from 'zod';
@@ -102,6 +105,8 @@ export interface ServiceConfig {
   allowedProfiles: string[];
   defaultOwner?: string;
   tls: { caFile?: string; verify: boolean };
+  /** Agent-facing operation filter (discovery and invocation). Absent: every operation is visible. */
+  operations?: { include?: OperationRule[]; exclude: OperationRule[] };
 }
 
 export interface AppConfig {
@@ -111,7 +116,16 @@ export interface AppConfig {
   profiles: Map<string, ProfileConfig>;
   credentialSources: Map<string, CredentialSource>;
   protectedPaths: string[];
-  files: { uploadRoots: string[]; exportRoots: string[]; artifactRoot: string };
+  files: {
+    uploadRoots: string[];
+    exportRoots: string[];
+    artifactRoot: string;
+    retention: { keepOnExit: boolean; crashedSessionMaxAgeHours: number; maxRetainedBytes: number };
+  };
+  /** Normalised exact origins. Absent: only destinations derived from services are reachable. */
+  network?: { allow: string[] };
+  trace: { enabled: boolean };
+  search: SearchConfig;
   encodedFields: EncodedFieldRule[];
   limits: Limits;
 }
@@ -479,10 +493,26 @@ export function loadConfigFromText(configPathArg: string, text: string): AppConf
       allowedProfiles,
       defaultOwner,
       tls: { caFile: s.tls?.caFile ? rel(s.tls.caFile) : undefined, verify: s.tls?.verify ?? true },
+      ...(s.operations ? { operations: { ...(s.operations.include ? { include: s.operations.include } : {}), exclude: s.operations.exclude } } : {}),
     });
   }
 
   const artifactRoot = raw.files.artifactRoot ? rel(raw.files.artifactRoot) : path.join(os.tmpdir(), 'openapi-swagger-mcp');
+  const lim = raw.limits;
+  if (lim.traceBytes < 4 * lim.traceSegmentBytes) fail('limits.traceBytes', 'must be at least 4 times limits.traceSegmentBytes');
+  if (lim.traceEventBytes > lim.traceSegmentBytes / 2) fail('limits.traceEventBytes', 'must be at most half of limits.traceSegmentBytes');
+  let network: { allow: string[] } | undefined;
+  if (raw.network) {
+    const allow = new Set<string>();
+    for (const [i, o] of raw.network.allow.entries()) {
+      try {
+        allow.add(normalizeOrigin(o));
+      } catch {
+        fail(`network.allow.${i}`, 'must be an exact http(s) origin');
+      }
+    }
+    network = { allow: [...allow] };
+  }
   return {
     configPath,
     configDir,
@@ -490,7 +520,10 @@ export function loadConfigFromText(configPathArg: string, text: string): AppConf
     profiles,
     credentialSources,
     protectedPaths: protectedPaths.map((p) => safeRealpath(p)),
-    files: { uploadRoots: raw.files.uploadRoots.map(rel), exportRoots: raw.files.exportRoots.map(rel), artifactRoot },
+    files: { uploadRoots: raw.files.uploadRoots.map(rel), exportRoots: raw.files.exportRoots.map(rel), artifactRoot, retention: raw.files.retention },
+    ...(network ? { network } : {}),
+    trace: raw.trace,
+    search: compileSearchConfig(raw.search, new Set(services.keys())),
     encodedFields: raw.encodedFields,
     limits: raw.limits,
   };

@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "batch": "dev2-1",
+  "kind": "dev2",
+  "corpusVersion": 1,
+  "queries": "queries.jsonl",
+  "config": "config.json",
+  "counts": {
+    "total": 185,
+    "perCategory": {
+      "exact_path": 8,
+      "exact_operation_id": 8,
+      "typo": 10,
+      "acronym": 8,
+      "vi": 11,
+      "vi_no_diacritics": 11,
+      "en": 11,
+      "cjk": 9,
+      "paraphrase_no_alias": 8,
+      "paraphrase_alias": 8,
+      "response_field": 13,
+      "nested_schema": 8,
+      "multi_service": 8,
+      "no_result": 64
+    },
+    "noResultByClass": {
+      "cjk-single-char": 6,
+      "diacritic-collision": 8,
+      "function-word-overlap": 9,
+      "fuzzy-neighbour": 9,
+      "out-of-domain": 12,
+      "scope-mismatch": 8,
+      "sounds-like-absent": 7,
+      "unprocessable": 5
+    }
+  },
+  "files": {
+    "config.json": "b50397190b4b05c2d73b344c1ad132cf53f21cccf96f5602898f82dc069c95ff",
+    "queries.jsonl": "b05e144aa6c28ec2d374d5604e736aae059630b8f85360ae400d055f665b929c",
+    "specs/cjk.json": "7a5aed3f6dd25a4ba9b93d01603e7bcd27160bc11eb17263014b69cf6696f661",
+    "specs/crm-a.json": "f12d09228a4f86d5cc40d6c8991d17c9515504acdec5766b1d4f9be839f232f5",
+    "specs/crm-b.json": "3ffea770e154ba5102f250d880c2aa094388d34111ba47e81d7826f8c587ebef",
+    "specs/erp.json": "dabcbc887adb3ab23073ff671aaee263eb177c6f1deadc81eed452b7c51be6b0",
+    "specs/hr.json": "fcecc5e9a57cac40db5f93f67135275ca470977068389addedf092fe0bc17cc0",
+    "specs/media.json": "6e9e4c67abbfedd1688f8054982266c9320bdeed3d90c7af75c3eab78704bf58",
+    "specs/shop.json": "62d7b507ae4c4a1b28f106a823e6bab365f392a565db364d9dabd6b1c2b5da46"
+  }
+}

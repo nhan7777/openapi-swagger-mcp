@@ -7,9 +7,11 @@ import type { ServiceConfig } from './config.js';
 import { fitServiceListing, type ListedService } from './listing.js';
 import { pkg } from './pkg.js';
 import { buildContract } from './specs/contract.js';
-import { searchOperations } from './specs/search.js';
-import { ToolError, type RequestInput } from './types.js';
+import { SearchEngine } from './search/engine.js';
+import { FIELD_SCOPES } from './search/types.js';
+import { ToolError, type Json, type RequestInput } from './types.js';
 import { errorInfo, utf8Len } from './util.js';
+import type { CallScope } from './trace/types.js';
 
 interface ToolResult {
   [key: string]: unknown;
@@ -22,6 +24,12 @@ const UNTRUSTED =
 
 function text(obj: unknown, isError = false): ToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(obj) }], ...(isError ? { isError: true } : {}) };
+}
+
+/** Tool arguments as plain JSON for the trace: undefined members are dropped. Callers pass only values that are safe to record. */
+function traceable(o: object): Record<string, Json> {
+  const out: Record<string, Json> = JSON.parse(JSON.stringify(o));
+  return out;
 }
 
 export function createServer(app: App): McpServer {
@@ -46,17 +54,41 @@ export function createServer(app: App): McpServer {
   };
   const server = new McpServer({ name: pkg.name, version: pkg.version });
 
-  /** Run a handler; ToolErrors and unexpected errors become sanitized isError results. */
-  const run = async (fn: () => Promise<unknown> | unknown): Promise<ToolResult> => {
+  /** What a handler's result adds to the trace call record. */
+  interface CallOutcome {
+    isError?: boolean;
+    errorCode?: string;
+    summary?: Record<string, Json>;
+  }
+
+  /** Resolve an operation for an agent-facing tool; a filtered operation is recorded as a policy block. */
+  const lookup = (call: CallScope, a: { service: string; operation: string; revision: string }) => {
+    call.setTarget(a);
     try {
-      const out = await fn();
+      return app.registry.getOperation(a.service, a.operation, a.revision);
+    } catch (e) {
+      if (e instanceof ToolError && e.code === 'OPERATION_NOT_ALLOWED')
+        app.recorderForServer.policyBlocked({ callId: call.callId, service: a.service, operation: a.operation, rule: String(e.details?.rule ?? 'unknown') });
+      throw e;
+    }
+  };
+
+  /** Run a handler inside a trace call; ToolErrors and unexpected errors become sanitized isError results. */
+  const run = async <R>(tool: string, traceArgs: Record<string, Json>, fn: (call: CallScope) => Promise<R> | R, outcome?: (r: R) => CallOutcome): Promise<ToolResult> => {
+    const call = app.recorderForServer.beginCall({ tool, args: traceArgs });
+    try {
+      const out = await fn(call);
       const body = JSON.stringify(out);
       if (utf8Len(body) > cap) {
+        call.end({ isError: true, errorCode: 'OUTPUT_TOO_LARGE' });
         return text({ error: { code: 'OUTPUT_TOO_LARGE', message: `result exceeds the ${cap} byte tool output budget; narrow the request` } }, true);
       }
+      const o = outcome?.(out);
+      call.end({ isError: o?.isError ?? false, ...(o?.errorCode ? { errorCode: o.errorCode } : {}), ...(o?.summary ? { summary: o.summary } : {}) });
       return { content: [{ type: 'text', text: body }] };
     } catch (e) {
       const info = errorInfo(e);
+      call.end({ isError: true, errorCode: info.code });
       const details = e instanceof ToolError ? e.details : undefined;
       return text({ error: { ...info, ...(details ? { details } : {}) } }, true);
     }
@@ -72,7 +104,7 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     () =>
-      run(async () => {
+      run('list_apis', {}, async () => {
         const full: ListedService[] = app.registry.states().map((s) => {
           const svc = app.cfg.services.get(s.serviceId)!;
           return { ...s, baseUrl: svc.baseUrl, auth: authSummary(svc) };
@@ -81,7 +113,7 @@ export function createServer(app: App): McpServer {
         const inline = fitServiceListing(full, threshold);
         if (inline) return { services: inline };
         // Even the metadata alone is over budget: keep the complete listing, warnings included, in an artifact.
-        const artifact = await app.artifacts.putBuffer(Buffer.from(JSON.stringify({ services: full }), 'utf8'), 'application/json', 'json');
+        const artifact = await app.artifacts.putBuffer(Buffer.from(JSON.stringify({ services: full }), 'utf8'), 'application/json', 'json', 'listing');
         return {
           servicesInline: false,
           serviceCount: full.length,
@@ -91,12 +123,14 @@ export function createServer(app: App): McpServer {
       }),
   );
 
+  const search = new SearchEngine({ config: app.cfg.search, baseUrls: new Map([...app.cfg.services].map(([id, s]) => [id, s.baseUrl])), policy: app.operationPolicy });
+
   server.registerTool(
     'search_operations',
     {
       title: 'Search operations',
       description:
-        'Search callable operations across services by path, operationId, tag, summary or description. Returns compact hits with the spec revision; use get_operation_schema for the full contract. Results are paged with an opaque cursor tied to the query and spec revision.' +
+        'Search callable operations across services by path, operationId, tag, summary, description, parameter names, and request/response field and schema names. `fields` restricts where terms may match (identifier, text, parameter, requestField, responseField, schema), e.g. fields ["responseField"] finds operations that return a field. An empty query browses; a query with no searchable terms is an error, never match-all. Hits carry the spec revision, a short match reason (`matches`) and the target base URL (`targets`). Use get_operation_schema for the full contract. Results are paged with an opaque cursor tied to the query, spec revisions and operation policy.' +
         UNTRUSTED,
       inputSchema: z
         .object({
@@ -105,6 +139,7 @@ export function createServer(app: App): McpServer {
           method: z.enum(['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH', 'TRACE']).optional(),
           tag: z.string().optional(),
           includeDeprecated: z.boolean().default(false),
+          fields: z.array(z.enum(FIELD_SCOPES)).min(1).max(FIELD_SCOPES.length).optional(),
           limit: z.number().int().min(1).max(50).default(10),
           cursor: z.string().optional(),
         })
@@ -112,24 +147,16 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (a) =>
-      run(() => {
-        const snaps = a.service
-          ? (() => {
-              if (!app.cfg.services.has(a.service)) throw new ToolError('SERVICE_UNKNOWN', `unknown service ${a.service}`);
-              const s = app.registry.peek(a.service);
-              if (!s) throw new ToolError('SERVICE_UNAVAILABLE', `service ${a.service} has no valid specification`);
-              return [s];
-            })()
-          : [...app.cfg.services.keys()].flatMap((id) => {
-              const s = app.registry.peek(id);
-              return s ? [s] : [];
-            });
-        const r = searchOperations(app.registry, snaps, a);
-        return {
-          total: r.total,
-          results: r.results.map((h) => ({ ...h, summary: h.summary?.slice(0, 200) })),
-          ...(r.nextCursor ? { nextCursor: r.nextCursor } : {}),
-        };
+      run('search_operations', traceable(a), () => {
+        const ids = a.service ? [a.service] : [...app.cfg.services.keys()];
+        if (a.service && !app.cfg.services.has(a.service)) throw new ToolError('SERVICE_UNKNOWN', `unknown service ${a.service}`);
+        const snaps = ids.flatMap((id) => {
+          const s = app.registry.peek(id);
+          return s ? [s] : [];
+        });
+        if (a.service && snaps.length === 0) throw new ToolError('SERVICE_UNAVAILABLE', `service ${a.service} has no valid specification`);
+        const unavailableServices = a.service ? [] : ids.filter((id) => app.registry.peek(id) === undefined);
+        return search.search(snaps, a, { maxBytes: cap, unavailableServices });
       }),
   );
 
@@ -144,12 +171,12 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (a) =>
-      run(async () => {
-        const { snapshot, operation } = app.registry.getOperation(a.service, a.operation, a.revision);
+      run('get_operation_schema', traceable(a), async (call) => {
+        const { snapshot, operation } = lookup(call, a);
         const contract = buildContract(snapshot, operation);
         const body = JSON.stringify(contract);
         if (utf8Len(body) <= Math.floor(cap * 0.85)) return contract;
-        const artifact = await app.artifacts.putBuffer(Buffer.from(body, 'utf8'), 'application/json', 'json');
+        const artifact = await app.artifacts.putBuffer(Buffer.from(body, 'utf8'), 'application/json', 'json', 'contract');
         return {
           service: a.service,
           operation: a.operation,
@@ -189,15 +216,26 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     (a) =>
-      run(() =>
-        app.invoker.invoke({
-          service: a.service,
-          operation: a.operation,
-          revision: a.revision,
-          input: a.input as RequestInput | undefined,
-          auth: a.auth,
-          capture: a.capture,
-          followRedirects: a.followRedirects,
+      run(
+        'invoke_operation',
+        traceable({ service: a.service, operation: a.operation, revision: a.revision, auth: a.auth, followRedirects: a.followRedirects, hasCapture: a.capture !== undefined }),
+        (call) =>
+          app.invoker.invoke(
+            {
+              service: a.service,
+              operation: a.operation,
+              revision: a.revision,
+              input: a.input as RequestInput | undefined,
+              auth: a.auth,
+              capture: a.capture,
+              followRedirects: a.followRedirects,
+            },
+            call,
+          ),
+        (r) => ({
+          isError: r.error !== undefined,
+          ...(r.error ? { errorCode: r.error.code } : {}),
+          summary: { sent: r.sent, ...(r.http ? { status: r.http.status } : {}) },
         }),
       ),
   );
@@ -211,7 +249,11 @@ export function createServer(app: App): McpServer {
       inputSchema: z.object({ service: z.string() }).strict(),
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
     },
-    (a) => run(() => app.registry.refreshService(a.service)),
+    (a) =>
+      run('refresh_specs', traceable(a), (call) => {
+        call.setTarget({ service: a.service });
+        return app.registry.refreshService(a.service, call.callId);
+      }),
   );
 
   const targetFields = {
@@ -237,10 +279,10 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
     },
     (a) =>
-      run(() => {
+      run('authenticate', traceable(a), (call) => {
         const target = targetOf(a);
         const p = app.profiles.resolveTarget(target);
-        app.recovery.authenticate(p.cfg.key, a.action ?? 'authenticate');
+        app.recovery.authenticate(p.cfg.key, a.action ?? 'authenticate', call.callId);
         const st = statusOf(p, target);
         return 'service' in target ? { ...st, target: p.cfg.target, via: target } : st;
       }),
@@ -256,7 +298,7 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (a) =>
-      run(() => {
+      run('get_auth_status', traceable(a), () => {
         const target = targetOf(a);
         return statusOf(app.profiles.resolveTarget(target), target);
       }),
@@ -280,7 +322,7 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: false, openWorldHint: false },
     },
     (a) =>
-      run(() => {
+      run('manage_session', traceable({ action: a.action, service: a.service, sessionId: a.sessionId, componentCount: a.credentials?.components.length, cookieCount: a.credentials?.cookies.length, credentialSourceIds: a.credentialSourceIds }), () => {
         if (a.action === 'create') {
           if (!a.service) throw new ToolError('ARGUMENT_REQUIRED', 'service is required to create a session');
           const s = app.sessions.create(a.service, { components: a.credentials?.components, cookies: a.credentials?.cookies, sources: a.credentialSourceIds });
@@ -311,7 +353,7 @@ export function createServer(app: App): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (a) =>
-      run(async () => {
+      run('read_artifact', traceable(a), async () => {
         let limit = a.limit;
         for (;;) {
           const r = await app.artifacts.read(a.artifactId, { pointer: a.pointer, offset: a.offset, limit });
@@ -337,7 +379,7 @@ export function createServer(app: App): McpServer {
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    (a) => run(() => app.artifacts.export(a.artifactId, { pointer: a.pointer, destination: a.destination, representation: a.representation })),
+    (a) => run('export_artifact', traceable({ artifactId: a.artifactId, pointer: a.pointer, destinationName: a.destination.split(/[\\/]/).pop(), representation: a.representation }), () => app.artifacts.export(a.artifactId, { pointer: a.pointer, destination: a.destination, representation: a.representation })),
   );
 
   return server;

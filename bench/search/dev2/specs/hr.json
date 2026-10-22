@@ -1,0 +1,2077 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "HR",
+  "version": "1.0.0"
+ },
+ "paths": {
+  "/employees": {
+   "get": {
+    "operationId": "listEmployees",
+    "summary": "Danh sách nhân viên",
+    "tags": [
+     "employees"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "department",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Employee"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createEmployee",
+    "summary": "Thêm nhân viên mới",
+    "tags": [
+     "employees"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EmployeeInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Employee"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/employees/{employeeId}": {
+   "get": {
+    "operationId": "getEmployee",
+    "summary": "Thông tin nhân viên",
+    "tags": [
+     "employees"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Employee"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "operationId": "updateEmployee",
+    "summary": "Cập nhật hồ sơ nhân viên",
+    "tags": [
+     "employees"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EmployeeInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Employee"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "operationId": "terminateEmployee",
+    "summary": "Chấm dứt hợp đồng nhân viên",
+    "tags": [
+     "employees"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "reason",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Lý do chấm dứt"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/employees/{employeeId}/contracts": {
+   "get": {
+    "operationId": "listContracts",
+    "summary": "Hợp đồng lao động",
+    "tags": [
+     "contracts"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "contractId": {
+              "type": "string"
+             },
+             "contractType": {
+              "type": "string"
+             },
+             "startDate": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createContract",
+    "summary": "Ký hợp đồng lao động",
+    "tags": [
+     "contracts"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "contractType": {
+          "type": "string"
+         },
+         "startDate": {
+          "type": "string"
+         },
+         "baseSalary": {
+          "type": "number"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "contractId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/departments": {
+   "get": {
+    "operationId": "listDepartments",
+    "summary": "Danh sách phòng ban",
+    "tags": [
+     "departments"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "departmentId": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createDepartment",
+    "summary": "Tạo phòng ban",
+    "tags": [
+     "departments"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "managerId": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "departmentId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/departments/{departmentId}/members": {
+   "get": {
+    "operationId": "listDepartmentMembers",
+    "summary": "Thành viên phòng ban",
+    "tags": [
+     "departments"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "departmentId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "employeeId": {
+              "type": "string"
+             },
+             "fullName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/leave/requests": {
+   "get": {
+    "operationId": "listLeaveRequests",
+    "summary": "Đơn xin nghỉ phép",
+    "tags": [
+     "leave"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "requestId": {
+              "type": "string"
+             },
+             "leaveType": {
+              "type": "string"
+             },
+             "status": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createLeaveRequest",
+    "summary": "Gửi đơn xin nghỉ phép",
+    "tags": [
+     "leave"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "leaveType": {
+          "type": "string"
+         },
+         "fromDate": {
+          "type": "string"
+         },
+         "toDate": {
+          "type": "string"
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "requestId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/leave/requests/{requestId}/approve": {
+   "post": {
+    "operationId": "approveLeaveRequest",
+    "summary": "Duyệt đơn nghỉ phép",
+    "tags": [
+     "leave"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "requestId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/leave/requests/{requestId}/reject": {
+   "post": {
+    "operationId": "rejectLeaveRequest",
+    "summary": "Từ chối đơn nghỉ phép",
+    "tags": [
+     "leave"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "requestId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "rejectionNote": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/leave/balance/{employeeId}": {
+   "get": {
+    "operationId": "getLeaveBalance",
+    "summary": "Số ngày phép còn lại",
+    "tags": [
+     "leave"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "remainingDays": {
+           "type": "number"
+          },
+          "usedDays": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/attendance/{employeeId}": {
+   "get": {
+    "operationId": "getAttendance",
+    "summary": "Bảng chấm công",
+    "tags": [
+     "attendance"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "month",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "date": {
+              "type": "string"
+             },
+             "checkInTime": {
+              "type": "string"
+             },
+             "checkOutTime": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/attendance/check-in": {
+   "post": {
+    "operationId": "checkIn",
+    "summary": "Chấm công vào",
+    "tags": [
+     "attendance"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "employeeId": {
+          "type": "string"
+         },
+         "location": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "recordedAt": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/attendance/check-out": {
+   "post": {
+    "operationId": "checkOut",
+    "summary": "Chấm công ra",
+    "tags": [
+     "attendance"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "employeeId": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "recordedAt": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payroll/{month}": {
+   "get": {
+    "operationId": "getPayroll",
+    "summary": "Bảng lương theo tháng",
+    "tags": [
+     "payroll"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "month",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "month": {
+           "type": "string"
+          },
+          "grossSalary": {
+           "type": "number"
+          },
+          "netSalary": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payroll/{month}/employees/{employeeId}": {
+   "get": {
+    "operationId": "getPayslip",
+    "summary": "Phiếu lương",
+    "tags": [
+     "payroll"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "month",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "employeeId": {
+           "type": "string"
+          },
+          "deductions": {
+           "type": "object",
+           "properties": {
+            "socialInsurance": {
+             "type": "number"
+            },
+            "personalIncomeTax": {
+             "type": "number"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payroll/{month}/run": {
+   "post": {
+    "operationId": "runPayroll",
+    "summary": "Chạy bảng lương",
+    "tags": [
+     "payroll"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "month",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/insurance/{employeeId}": {
+   "get": {
+    "operationId": "getInsurance",
+    "summary": "Thông tin bảo hiểm xã hội",
+    "description": "Số sổ BHXH và mức đóng",
+    "tags": [
+     "insurance"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "insuranceNumber": {
+           "type": "string"
+          },
+          "contributionLevel": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recruitment/jobs": {
+   "get": {
+    "operationId": "listJobPostings",
+    "summary": "Tin tuyển dụng",
+    "tags": [
+     "recruitment"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "jobId": {
+              "type": "string"
+             },
+             "title": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createJobPosting",
+    "summary": "Đăng tin tuyển dụng",
+    "tags": [
+     "recruitment"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "requirements": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "jobId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recruitment/candidates": {
+   "get": {
+    "operationId": "listCandidates",
+    "summary": "Danh sách ứng viên",
+    "description": "Hồ sơ và CV của ứng viên",
+    "tags": [
+     "recruitment"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "candidateId": {
+              "type": "string"
+             },
+             "fullName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recruitment/candidates/{candidateId}/interview": {
+   "post": {
+    "operationId": "scheduleInterview",
+    "summary": "Đặt lịch phỏng vấn",
+    "tags": [
+     "recruitment"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "candidateId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "interviewTime": {
+          "type": "string"
+         },
+         "interviewer": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "interviewId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/training/courses": {
+   "get": {
+    "operationId": "listCourses",
+    "summary": "Khóa đào tạo",
+    "tags": [
+     "training"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "courseId": {
+              "type": "string"
+             },
+             "courseName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/training/courses/{courseId}/enroll": {
+   "post": {
+    "operationId": "enrollCourse",
+    "summary": "Đăng ký khóa đào tạo",
+    "tags": [
+     "training"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "courseId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "employeeId": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/performance/{employeeId}": {
+   "get": {
+    "operationId": "getPerformanceReview",
+    "summary": "Đánh giá hiệu suất",
+    "description": "Điểm KPI và mục tiêu",
+    "tags": [
+     "performance"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "kpiScore": {
+           "type": "number"
+          },
+          "goals": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "title": {
+              "type": "string"
+             },
+             "weight": {
+              "type": "number"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "submitPerformanceReview",
+    "summary": "Nộp đánh giá hiệu suất",
+    "description": "Gửi điểm KPI",
+    "tags": [
+     "performance"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "kpiScore": {
+          "type": "number"
+         },
+         "goals": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "title": {
+             "type": "string"
+            },
+            "weight": {
+             "type": "number"
+            }
+           }
+          }
+         },
+         "comment": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "reviewId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/holidays": {
+   "get": {
+    "operationId": "listHolidays",
+    "summary": "Ngày nghỉ lễ",
+    "tags": [
+     "calendar"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "holidayDate": {
+              "type": "string"
+             },
+             "holidayName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/positions": {
+   "get": {
+    "operationId": "listPositions",
+    "summary": "Danh sách chức vụ",
+    "tags": [
+     "organization"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "positionId": {
+              "type": "string"
+             },
+             "positionName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/offices": {
+   "get": {
+    "operationId": "listOffices",
+    "summary": "Văn phòng làm việc",
+    "tags": [
+     "organization"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "officeId": {
+              "type": "string"
+             },
+             "officeAddress": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/documents/upload": {
+   "post": {
+    "operationId": "uploadDocument",
+    "summary": "Tải tài liệu nhân sự",
+    "tags": [
+     "documents"
+    ],
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "documentId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/reports/headcount": {
+   "get": {
+    "operationId": "getHeadcountReport",
+    "summary": "Báo cáo nhân sự",
+    "tags": [
+     "reports"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "headcount": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/reports/turnover": {
+   "get": {
+    "operationId": "getTurnoverReport",
+    "summary": "Báo cáo biến động nhân sự",
+    "tags": [
+     "reports"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "turnoverRate": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/benefits": {
+   "get": {
+    "operationId": "listBenefits",
+    "summary": "Phúc lợi",
+    "tags": [
+     "benefits"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "benefitName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/overtime/requests": {
+   "post": {
+    "operationId": "createOvertimeRequest",
+    "summary": "Đăng ký làm thêm giờ",
+    "description": "Gửi yêu cầu OT cho quản lý duyệt",
+    "tags": [
+     "attendance"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "employeeId": {
+          "type": "string"
+         },
+         "overtimeHours": {
+          "type": "number"
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "requestId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/health": {
+   "get": {
+    "operationId": "getHrHealth",
+    "summary": "Kiểm tra tình trạng hệ thống",
+    "tags": [
+     "ops"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/me/profile": {
+   "get": {
+    "operationId": "getMyProfile",
+    "summary": "Hồ sơ của tôi",
+    "tags": [
+     "employees"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Employee"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    }
+   },
+   "Address": {
+    "type": "object",
+    "properties": {
+     "province": {
+      "type": "string"
+     },
+     "district": {
+      "type": "string"
+     },
+     "street": {
+      "type": "string"
+     }
+    }
+   },
+   "Employee": {
+    "type": "object",
+    "properties": {
+     "employeeId": {
+      "type": "string"
+     },
+     "fullName": {
+      "type": "string",
+      "description": "Họ và tên"
+     },
+     "department": {
+      "type": "string"
+     },
+     "position": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "address": {
+      "$ref": "#/components/schemas/Address"
+     },
+     "emergencyContact": {
+      "type": "object",
+      "properties": {
+       "fullName": {
+        "type": "string"
+       },
+       "relationship": {
+        "type": "string",
+        "description": "Quan hệ với nhân viên"
+       },
+       "phone": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   },
+   "EmployeeInput": {
+    "type": "object",
+    "properties": {
+     "fullName": {
+      "type": "string"
+     },
+     "department": {
+      "type": "string"
+     },
+     "position": {
+      "type": "string"
+     },
+     "startDate": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

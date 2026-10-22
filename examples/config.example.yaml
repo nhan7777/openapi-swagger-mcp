@@ -346,6 +346,20 @@ services:
 #       source: { file: ./specs/split/openapi.yaml }
 #       roots: [./specs/shared]
 
+##@ scenario: operation-filter
+## OPERATION FILTER: hide operations from the agent, in search AND in invocation. `exclude` wins over `include`; no
+## `include` means every operation is a candidate. A rule matches when ALL its keys match: `method`, `path` (a
+## case-sensitive glob: `*` is one segment, `**` is anything), `operationId`, `tag`. A hidden operation is not
+## listed, its contract cannot be fetched and invoke_operation answers OPERATION_NOT_ALLOWED with `sent: false`. The
+## spec revision does not change. Auth recipes you configured are NOT filtered: the agent has no way to run them.
+## This is a filter on what the agent may ask for, not a payload rewrite: allowed requests are sent exactly as given.
+#   ordersReadOnly:
+#     baseUrl: http://localhost:8080/api/v1
+#     spec: http://localhost:8080/v3/api-docs
+#     operations:
+#       include: [{ tag: orders }, { path: /orders/** }]
+#       exclude: [{ method: DELETE }, { operationId: purgeAll }]
+
 ##@ scenario: profiles requires: identity-service
 ## ==== TOP-LEVEL SECTIONS (each appears once; enable only what you need) ====
 ## PROFILES. A profile is an auth owner several services can select. It has the same shape as an inline service
@@ -410,6 +424,12 @@ services:
 #   uploadRoots: [./fixtures]
 #   exportRoots: [./exports]
 #   artifactRoot: ./runtime-artifacts
+##   Session lifecycle (the values below ARE the defaults). A normal shutdown removes the session directory, trace
+##   included. `keepOnExit: true` keeps it (trace segments, artifacts, artifacts.jsonl) and marks it as ended on
+##   purpose, so it is never mistaken for a crash. A directory left by a crashed process is removed at the next start
+##   when crashedSessionMaxAgeHours is 0, otherwise once it is older than that. Retained sessions are trimmed oldest
+##   first when they exceed maxRetainedBytes. Retained files are local debugging data: they hold raw responses.
+#   retention: { keepOnExit: false, crashedSessionMaxAgeHours: 0, maxRetainedBytes: 1073741824 }
 
 ##@ scenario: encoded-fields
 ## ENCODED FIELDS: tell the server which response fields hold base64, so they are shown as binary instead of a
@@ -439,3 +459,59 @@ services:
 #   toolOutputBytes: 32768            # budget of one tool result; max 4194304
 #   artifactPageBytes: 16384          # one read_artifact page; max 1048576
 #   maxRedirects: 5                   # redirects followed when enabled; max 20
+##  Trace and artifact bounds. All are hard caps; byte counts of the in-memory index are conservative estimates.
+#   traceBytes: 67108864              # disk budget of one session's trace (64 MiB), at least 4x traceSegmentBytes; max 4294967296
+#   traceSegmentBytes: 4194304        # one trace file (4 MiB); max 268435456
+#   traceEventBytes: 65536            # one trace event, at most half a segment; max 4194304
+#   traceIndexBytes: 33554432         # memory the trace index may use (32 MiB), queue included; max 1073741824
+#   traceQueueBytes: 4194304          # trace bytes waiting to be written; further events are counted as dropped; max 268435456
+#   traceMaxOpenRecords: 256          # exchanges/calls/auth runs in progress at once; max 10000
+#   traceInputInlineBytes: 4096       # agent input kept inline in the trace; larger input becomes one artifact; max 1048576
+#   traceFieldValueBytes: 4096        # a longer header/cookie/query value is not recorded; max 1048576
+#   requestBodyTraceBytes: 1048576    # a larger request body is not stored as an artifact; max 67108864
+#   maxArtifacts: 20000               # artifacts per session; further captures are cut as if the quota were reached; max 1000000
+
+##@ scenario: trace
+## TRACE: every tool call and every HTTP exchange this process makes is recorded (identity, service, operation,
+## spec revision, timing, whether the request was sent, links to response artifacts). The trace is local, bounded and
+## best effort: writing is asynchronous, a full disk or queue is counted and reported, never an error for the tool
+## call. Header, cookie and query values are recorded as the agent sent them; credentials injected from your config
+## or captured by a recipe are never recorded (only their names). `enabled: false` stops the file and the in-memory
+## index; the network and operation policies still apply. The trace shows what THIS server did through its HTTP
+## client: it is not a packet capture (host, content-length and connection headers are added by the HTTP library and
+## not observed).
+# trace:
+#   enabled: true
+
+##@ scenario: search
+## SEARCH: lexical inside this process on loaded specs; no model, native inference runtime or embedding service.
+## No semantic/model config is supported. Search itself makes no network calls.
+## Declare aliases for business words missing from the spec; matching one phrase expands to the others at lower weight.
+## Nothing is a synonym unless explicitly listed; `services` restricts an alias group. `limits` bound work and memory (the
+## values below ARE the defaults); when a limit cuts an index, the search result reports it under `coverage`.
+# search:
+#   aliases:
+#     - { terms: ["đơn hàng", "order"], services: [orders] }
+#     - { terms: ["khách hàng", "customer", "client"] }
+#   limits:
+#     schemaDepth: 6                    # nesting levels of request/response schemas that are indexed; max 32
+#     fieldsPerOperation: 400           # fields indexed per operation; max 5000
+#     schemaNodesPerOperation: 10000    # schema nodes visited per operation (every $ref hop counts); max 100000
+#     descriptionTokens: 256            # tokens indexed per description; max 4096
+#     termBytes: 128                    # a longer term is dropped, never truncated; max 512
+#     evidenceBytesPerOperation: 16384  # stored match-evidence text per operation; max 262144
+#     fuzzyExpansions: 8                # typo candidates per unknown query term; max 32
+#     fuzzyCandidatesPerQuery: 4096     # vocabulary comparisons per query (CPU bound); max 65536
+#     indexBudgetBytes: 67108864        # conservative estimate for all search indexes (64 MiB); max 1073741824
+
+##@ scenario: network
+## NETWORK ALLOW-LIST (explanation only, because a list must name EVERY origin your services use): the server only
+## contacts origins derived from your config (each service's baseUrl, a spec URL, `allowedOrigins`, and the service
+## a recipe names). Add a top-level `network: { allow: [...] }` to ALSO require them to be listed; the server refuses
+## to start, and --check reports NETWORK_NOT_ALLOWED, when a derived origin is missing. Entries are exact origins
+## (scheme, host, port); no wildcards, paths, userinfo or queries. Example:
+##   network:
+##     allow: [http://localhost:8080, https://identity.dev.example.test]
+## What this does NOT do: it compares origin strings, at every redirect hop. It does not look at the IP a name
+## resolves to (DNS, hosts file, VPN, rebinding), proxies or CAs, and it does not block private addresses: a
+## loopback or VPN endpoint that you configure is reachable. Do not describe it as an SSRF or DNS firewall.

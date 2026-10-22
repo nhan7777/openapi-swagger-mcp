@@ -1,4 +1,5 @@
 import type { CookieJar } from 'tough-cookie';
+import type { AuthRunId } from '../trace/types.js';
 import type { AppConfig, AuthTarget, ComponentConfig, ProfileConfig, ServiceConfig } from '../config.js';
 import { ToolError } from '../types.js';
 import { cookieNames, newJar, usableCookies, type CookieScope } from './cookies.js';
@@ -50,6 +51,8 @@ export class ProfileRuntime {
   generation = 0;
   recovering?: Promise<void>;
   activeAction?: AuthAction;
+  /** Trace id of the recovery/authentication run in progress, so a joining 401 can name it. */
+  activeRunId?: AuthRunId;
   failure?: ProfileFailure;
 
   constructor(

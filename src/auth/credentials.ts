@@ -14,6 +14,8 @@ export interface Injection {
   where: 'header' | 'query' | 'cookie';
   name: string;
   value: string;
+  /** Config binding / component id this value came from. Safe to show; the value is not. */
+  binding?: string;
 }
 
 /** Outcome of reading one env/file secret once. Errors are kept so a wrong type is not rewritten into "missing". */
@@ -168,10 +170,10 @@ export function toCredValue(type: ComponentConfig['type'], raw: unknown): CredVa
 }
 
 export function injectionFor(c: ComponentConfig, v: CredValue): Injection {
-  if (c.type === 'bearer') return { where: 'header', name: 'authorization', value: `Bearer ${v as string}` };
+  if (c.type === 'bearer') return { where: 'header', name: 'authorization', value: `Bearer ${v as string}`, binding: c.id };
   if (c.type === 'basic') {
     const b = v as { username: string; password: string };
-    return { where: 'header', name: 'authorization', value: `Basic ${Buffer.from(`${b.username}:${b.password}`, 'utf8').toString('base64')}` };
+    return { where: 'header', name: 'authorization', value: `Basic ${Buffer.from(`${b.username}:${b.password}`, 'utf8').toString('base64')}`, binding: c.id };
   }
-  return { where: c.in, name: c.in === 'header' ? c.name.toLowerCase() : c.name, value: v as string };
+  return { where: c.in, name: c.in === 'header' ? c.name.toLowerCase() : c.name, value: v as string, binding: c.id };
 }

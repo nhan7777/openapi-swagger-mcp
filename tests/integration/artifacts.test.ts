@@ -144,7 +144,7 @@ describe('reading artifacts', () => {
     h = await startHarness();
     const text = 'héllo wörld — 日本語のテキスト 🚀 '.repeat(300);
     const store = h.app.artifacts;
-    const meta = await store.putBuffer(Buffer.from(text, 'utf8'), 'text/plain', 'text');
+    const meta = await store.putBuffer(Buffer.from(text, 'utf8'), 'text/plain', 'text', 'other');
     for (const limit of [7, 64, 1000]) {
       let offset = 0;
       let acc = '';
@@ -161,7 +161,7 @@ describe('reading artifacts', () => {
 
   test('pointer reads return one field and are paged; missing pointers are errors', async () => {
     h = await startHarness();
-    const meta = await h.app.artifacts.putBuffer(Buffer.from(JSON.stringify({ a: { b: 'x'.repeat(100) }, list: [1, 2] })), 'application/json');
+    const meta = await h.app.artifacts.putBuffer(Buffer.from(JSON.stringify({ a: { b: 'x'.repeat(100) }, list: [1, 2] })), 'application/json', 'json', 'other');
     const whole = await h.app.artifacts.read(meta.id, { pointer: '/a/b', limit: 40 });
     expect(whole.text).toBe('x'.repeat(40));
     expect(whole.nextOffset).toBe(40);
@@ -179,7 +179,7 @@ describe('reading artifacts', () => {
 });
 
 describe('export safety', () => {
-  const put = async (hh: Harness) => hh.app.artifacts.putBuffer(Buffer.from('payload'), 'text/plain', 'text');
+  const put = async (hh: Harness) => hh.app.artifacts.putBuffer(Buffer.from('payload'), 'text/plain', 'text', 'other');
 
   test('refuses to overwrite and refuses destinations outside exportRoots', async () => {
     h = await startHarness();
@@ -215,7 +215,7 @@ describe('export safety', () => {
 
   test('malformed base64 fails to decode and leaves no file; the original stays readable', async () => {
     h = await startHarness();
-    const a = await h.app.artifacts.putBuffer(Buffer.from(JSON.stringify({ img: 'not base64 !!' })), 'application/json');
+    const a = await h.app.artifacts.putBuffer(Buffer.from(JSON.stringify({ img: 'not base64 !!' })), 'application/json', 'json', 'other');
     await expect(h.app.artifacts.export(a.id, { pointer: '/img', destination: h.dir + '/exports/i.bin', representation: 'decoded' })).rejects.toMatchObject({ code: 'DECODE_FAILED' });
     expect(fs.existsSync(h.dir + '/exports/i.bin')).toBe(false);
     expect((await h.app.artifacts.read(a.id, {})).text).toContain('not base64');
@@ -264,7 +264,7 @@ describe('lifecycle', () => {
   test('normal exit removes session artifacts; exports survive', async () => {
     h = await startHarness();
     const dir = h.app.artifacts.dir;
-    const a = await h.app.artifacts.putBuffer(Buffer.from('keepme'), 'text/plain', 'text');
+    const a = await h.app.artifacts.putBuffer(Buffer.from('keepme'), 'text/plain', 'text', 'other');
     await h.app.artifacts.export(a.id, { destination: h.dir + '/exports/kept.txt', representation: 'original' });
     expect(fs.existsSync(dir)).toBe(true);
     await h.app.close();
@@ -297,7 +297,7 @@ describe('lifecycle', () => {
 
   test('two live processes on one root cannot read each other\'s artifact ids', async () => {
     h = await startHarness();
-    const a = await h.app.artifacts.putBuffer(Buffer.from('mine'), 'text/plain', 'text');
+    const a = await h.app.artifacts.putBuffer(Buffer.from('mine'), 'text/plain', 'text', 'other');
     const { ArtifactStore } = await import('../../src/artifacts/store.js');
     const other = await ArtifactStore.open(h.app.cfg);
     try {

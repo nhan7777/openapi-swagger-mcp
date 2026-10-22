@@ -1,0 +1,210 @@
+{"id":"exact_path-01","category":"exact_path","lang":"en","query":"/orders/{orderId}","relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2},{"service":"shop","operation":"PATCH /orders/{orderId}","grade":2},{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"exact_path-02","category":"exact_path","lang":"en","query":"GET /orders/{orderId}","relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"test"}
+{"id":"exact_path-03","category":"exact_path","lang":"en","query":"DELETE /orders/{orderId}","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"exact_path-04","category":"exact_path","lang":"en","query":"/invoices/{invoiceId}/pdf","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"test"}
+{"id":"exact_path-05","category":"exact_path","lang":"en","query":"/auth/otp/verify","relevant":[{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"dev"}
+{"id":"exact_path-06","category":"exact_path","lang":"en","query":"POST /payments/{paymentId}/capture","relevant":[{"service":"shop","operation":"POST /payments/{paymentId}/capture","grade":2}],"split":"test"}
+{"id":"exact_path-07","category":"exact_path","lang":"en","query":"/inventory/warehouses/{warehouseId}/stock","relevant":[{"service":"shop","operation":"GET /inventory/warehouses/{warehouseId}/stock","grade":2}],"split":"dev"}
+{"id":"exact_path-08","category":"exact_path","lang":"en","query":"/reports/vat","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2}],"split":"test"}
+{"id":"exact_path-09","category":"exact_path","lang":"en","query":"/api/v2/orders/{orderId}/receipt","relevant":[{"service":"shop","operation":"GET /api/v2/orders/{orderId}/receipt","grade":2}],"split":"dev"}
+{"id":"exact_path-10","category":"exact_path","lang":"en","query":"/users/me","relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"test"}
+{"id":"exact_path-11","category":"exact_path","lang":"en","query":"/erp/suppliers/v555/{id}","relevant":[{"service":"erp","operation":"GET /erp/suppliers/v555/{id}","grade":2}],"split":"dev"}
+{"id":"exact_path-12","category":"exact_path","lang":"en","query":"GET /orders/12345","relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"test"}
+{"id":"exact_path-13","category":"exact_path","lang":"en","query":"/products/{sku}/price","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"dev"}
+{"id":"exact_path-14","category":"exact_path","lang":"en","query":"/loyalty/{customerId}/points","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"test"}
+{"id":"exact_path-15","category":"exact_path","lang":"en","query":"/webhooks","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-01","category":"exact_operation_id","lang":"en","query":"getOrder","relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-02","category":"exact_operation_id","lang":"en","query":"createRefund","relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"exact_operation_id-03","category":"exact_operation_id","lang":"en","query":"listOrderShipments","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-04","category":"exact_operation_id","lang":"en","query":"sendInvoiceEmail","relevant":[{"service":"shop","operation":"POST /invoices/{invoiceId}/send","grade":2}],"split":"test"}
+{"id":"exact_operation_id-05","category":"exact_operation_id","lang":"en","query":"verifyOtp","relevant":[{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-06","category":"exact_operation_id","lang":"en","query":"getCurrentUser","relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"test"}
+{"id":"exact_operation_id-07","category":"exact_operation_id","lang":"en","query":"getSalesReport","relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-08","category":"exact_operation_id","lang":"en","query":"createStockTransfer","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"test"}
+{"id":"exact_operation_id-09","category":"exact_operation_id","lang":"en","query":"updateProductPrice","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-10","category":"exact_operation_id","lang":"en","query":"calculateShippingFee","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"test"}
+{"id":"exact_operation_id-11","category":"exact_operation_id","lang":"en","query":"validateCoupon","relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-12","category":"exact_operation_id","lang":"en","query":"getLoyaltyPoints","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"test"}
+{"id":"exact_operation_id-13","category":"exact_operation_id","lang":"en","query":"getReceiptV2","relevant":[{"service":"shop","operation":"GET /api/v2/orders/{orderId}/receipt","grade":2}],"split":"dev"}
+{"id":"exact_operation_id-14","category":"exact_operation_id","lang":"en","query":"get_invoice_500","relevant":[{"service":"erp","operation":"GET /erp/invoices/v500/{id}","grade":2}],"split":"test"}
+{"id":"exact_operation_id-15","category":"exact_operation_id","lang":"en","query":"get_report_999","relevant":[{"service":"erp","operation":"GET /erp/reports/v999/{id}","grade":2}],"split":"dev"}
+{"id":"typo-01","category":"typo","lang":"en","query":"ordr detail","relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"typo-02","category":"typo","lang":"en","query":"refnud order","relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"typo-03","category":"typo","lang":"en","query":"shippment tracking","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"dev"}
+{"id":"typo-04","category":"typo","lang":"en","query":"loyality points","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"test"}
+{"id":"typo-05","category":"typo","lang":"en","query":"warehose stock","relevant":[{"service":"shop","operation":"GET /inventory/warehouses/{warehouseId}/stock","grade":2}],"split":"dev"}
+{"id":"typo-06","category":"typo","lang":"en","query":"invocie pdf","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"test"}
+{"id":"typo-07","category":"typo","lang":"en","query":"paymnet capture","relevant":[{"service":"shop","operation":"POST /payments/{paymentId}/capture","grade":2}],"split":"dev"}
+{"id":"typo-08","category":"typo","lang":"en","query":"cancle order","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"test"}
+{"id":"typo-09","category":"typo","lang":"en","query":"registr webhook","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"dev"}
+{"id":"typo-10","category":"typo","lang":"en","query":"verfiy otp","relevant":[{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"test"}
+{"id":"typo-11","category":"typo","lang":"en","query":"calculat shipping fee","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"dev"}
+{"id":"typo-12","category":"typo","lang":"en","query":"updte product price","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"test"}
+{"id":"typo-13","category":"typo","lang":"en","query":"stock tranfer","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"dev"}
+{"id":"typo-14","category":"typo","lang":"en","query":"salse report","relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"test"}
+{"id":"typo-15","category":"typo","lang":"en","query":"custmer addresses","relevant":[{"service":"shop","operation":"GET /customers/{customerId}/addresses","grade":2}],"split":"dev"}
+{"id":"acronym-01","category":"acronym","lang":"en","query":"VAT report","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2}],"split":"dev"}
+{"id":"acronym-02","category":"acronym","lang":"en","query":"VATReport","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2}],"split":"test"}
+{"id":"acronym-03","category":"acronym","lang":"en","query":"invoicePDF","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"dev"}
+{"id":"acronym-04","category":"acronym","lang":"en","query":"verifyOTP","relevant":[{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"test"}
+{"id":"acronym-05","category":"acronym","lang":"en","query":"send OTP SMS","relevant":[{"service":"shop","operation":"POST /auth/otp/send","grade":2}],"split":"dev"}
+{"id":"acronym-06","category":"acronym","lang":"en","query":"receipt v2","relevant":[{"service":"shop","operation":"GET /api/v2/orders/{orderId}/receipt","grade":2}],"split":"test"}
+{"id":"acronym-07","category":"acronym","lang":"en","query":"SKU price","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2},{"service":"shop","operation":"GET /products/{sku}","grade":1}],"split":"dev"}
+{"id":"acronym-08","category":"acronym","lang":"en","query":"HTTP health","relevant":[{"service":"shop","operation":"GET /health","grade":2}],"split":"test"}
+{"id":"acronym-09","category":"acronym","lang":"en","query":"EAN barcode","relevant":[{"service":"shop","operation":"GET /products/{sku}","grade":2},{"service":"shop","operation":"GET /products","grade":2}],"split":"dev"}
+{"id":"acronym-10","category":"acronym","lang":"en","query":"QR code payment","relevant":[{"service":"shop","operation":"POST /payments","grade":2},{"service":"shop","operation":"GET /payments/{paymentId}","grade":2}],"split":"test"}
+{"id":"acronym-11","category":"acronym","lang":"en","query":"callback URL","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"dev"}
+{"id":"acronym-12","category":"acronym","lang":"en","query":"OTP","relevant":[{"service":"shop","operation":"POST /auth/otp/send","grade":2},{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"test"}
+{"id":"acronym-13","category":"acronym","lang":"vi","query":"GTGT","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2},{"service":"shop","operation":"GET /invoices/{invoiceId}","grade":1},{"service":"shop","operation":"GET /invoices","grade":1}],"split":"dev"}
+{"id":"acronym-14","category":"acronym","lang":"en","query":"EAN-13","relevant":[{"service":"shop","operation":"GET /products/{sku}","grade":2},{"service":"shop","operation":"GET /products","grade":2}],"split":"test"}
+{"id":"acronym-15","category":"acronym","lang":"en","query":"SMS","relevant":[{"service":"shop","operation":"POST /auth/otp/send","grade":2}],"split":"dev"}
+{"id":"vi-01","category":"vi","lang":"vi","query":"hủy đơn hàng","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"vi-02","category":"vi","lang":"vi","query":"hoàn tiền đơn hàng","relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"vi-03","category":"vi","lang":"vi","query":"chuyển kho","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"dev"}
+{"id":"vi-04","category":"vi","lang":"vi","query":"lịch sử trạng thái đơn hàng","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/history","grade":2}],"split":"test"}
+{"id":"vi-05","category":"vi","lang":"vi","query":"báo cáo doanh thu","relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"vi-06","category":"vi","lang":"vi","query":"báo cáo thuế GTGT","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2}],"split":"test"}
+{"id":"vi-07","category":"vi","lang":"vi","query":"gửi hóa đơn qua email","relevant":[{"service":"shop","operation":"POST /invoices/{invoiceId}/send","grade":2}],"split":"dev"}
+{"id":"vi-08","category":"vi","lang":"vi","query":"tải hóa đơn PDF","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"test"}
+{"id":"vi-09","category":"vi","lang":"vi","query":"điểm tích lũy","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"dev"}
+{"id":"vi-10","category":"vi","lang":"vi","query":"danh sách cửa hàng","relevant":[{"service":"shop","operation":"GET /stores","grade":2}],"split":"test"}
+{"id":"vi-11","category":"vi","lang":"vi","query":"danh sách tỉnh thành","relevant":[{"service":"shop","operation":"GET /provinces","grade":2}],"split":"dev"}
+{"id":"vi-12","category":"vi","lang":"vi","query":"đăng ký webhook","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"test"}
+{"id":"vi-13","category":"vi","lang":"vi","query":"tính phí vận chuyển","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"dev"}
+{"id":"vi-14","category":"vi","lang":"vi","query":"kiểm tra mã giảm giá","relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"test"}
+{"id":"vi-15","category":"vi","lang":"vi","query":"thông tin nhân viên","relevant":[{"service":"shop","operation":"GET /employees/{employeeId}","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-01","category":"vi_no_diacritics","lang":"vi","query":"huy don hang","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-02","category":"vi_no_diacritics","lang":"vi","query":"hoan tien don hang","relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-03","category":"vi_no_diacritics","lang":"vi","query":"chuyen kho","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-04","category":"vi_no_diacritics","lang":"vi","query":"lich su trang thai don hang","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/history","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-05","category":"vi_no_diacritics","lang":"vi","query":"bao cao doanh thu","relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-06","category":"vi_no_diacritics","lang":"vi","query":"bao cao thue GTGT","relevant":[{"service":"shop","operation":"GET /reports/vat","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-07","category":"vi_no_diacritics","lang":"vi","query":"gui hoa don qua email","relevant":[{"service":"shop","operation":"POST /invoices/{invoiceId}/send","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-08","category":"vi_no_diacritics","lang":"vi","query":"tai hoa don PDF","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-09","category":"vi_no_diacritics","lang":"vi","query":"diem tich luy","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-10","category":"vi_no_diacritics","lang":"vi","query":"danh sach cua hang","relevant":[{"service":"shop","operation":"GET /stores","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-11","category":"vi_no_diacritics","lang":"vi","query":"danh sach tinh thanh","relevant":[{"service":"shop","operation":"GET /provinces","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-12","category":"vi_no_diacritics","lang":"vi","query":"dang ky webhook","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-13","category":"vi_no_diacritics","lang":"vi","query":"tinh phi van chuyen","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"dev"}
+{"id":"vi_no_diacritics-14","category":"vi_no_diacritics","lang":"vi","query":"kiem tra ma giam gia","relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"test"}
+{"id":"vi_no_diacritics-15","category":"vi_no_diacritics","lang":"vi","query":"thong tin nhan vien","relevant":[{"service":"shop","operation":"GET /employees/{employeeId}","grade":2}],"split":"dev"}
+{"id":"en-01","category":"en","lang":"en","query":"cancel an order","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"en-02","category":"en","lang":"en","query":"list invoices","relevant":[{"service":"shop","operation":"GET /invoices","grade":2}],"split":"test"}
+{"id":"en-03","category":"en","lang":"en","query":"send invoice by email","relevant":[{"service":"shop","operation":"POST /invoices/{invoiceId}/send","grade":2}],"split":"dev"}
+{"id":"en-04","category":"en","lang":"en","query":"search customers","relevant":[{"service":"shop","operation":"GET /customers","grade":2}],"split":"test"}
+{"id":"en-05","category":"en","lang":"en","query":"current user profile","relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"dev"}
+{"id":"en-06","category":"en","lang":"en","query":"order status history","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/history","grade":2}],"split":"test"}
+{"id":"en-07","category":"en","lang":"en","query":"shipments of an order","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"dev"}
+{"id":"en-08","category":"en","lang":"en","query":"transfer stock between warehouses","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"test"}
+{"id":"en-09","category":"en","lang":"en","query":"register a webhook","relevant":[{"service":"shop","operation":"POST /webhooks","grade":2}],"split":"dev"}
+{"id":"en-10","category":"en","lang":"en","query":"update product price","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"test"}
+{"id":"en-11","category":"en","lang":"en","query":"loyalty points balance","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"dev"}
+{"id":"en-12","category":"en","lang":"en","query":"capture payment","relevant":[{"service":"shop","operation":"POST /payments/{paymentId}/capture","grade":2}],"split":"test"}
+{"id":"en-13","category":"en","lang":"en","query":"upload attachment","relevant":[{"service":"shop","operation":"POST /files/upload","grade":2}],"split":"dev"}
+{"id":"en-14","category":"en","lang":"en","query":"list provinces","relevant":[{"service":"shop","operation":"GET /provinces","grade":2}],"split":"test"}
+{"id":"en-15","category":"en","lang":"en","query":"refresh access token","relevant":[{"service":"shop","operation":"POST /auth/refresh","grade":2}],"split":"dev"}
+{"id":"cjk-01","category":"cjk","lang":"zh","query":"订单详情","relevant":[{"service":"cjk","operation":"GET /orders/{id}","grade":2}],"split":"dev"}
+{"id":"cjk-02","category":"cjk","lang":"zh","query":"订单列表","relevant":[{"service":"cjk","operation":"GET /orders","grade":2}],"split":"test"}
+{"id":"cjk-03","category":"cjk","lang":"zh","query":"创建订单","relevant":[{"service":"cjk","operation":"POST /orders","grade":2}],"split":"dev"}
+{"id":"cjk-04","category":"cjk","lang":"zh","query":"用户信息","relevant":[{"service":"cjk","operation":"GET /users/{id}","grade":2}],"split":"test"}
+{"id":"cjk-05","category":"cjk","lang":"zh","query":"库存","relevant":[{"service":"cjk","operation":"GET /inventory","grade":2}],"split":"dev"}
+{"id":"cjk-06","category":"cjk","lang":"zh","query":"支付","relevant":[{"service":"cjk","operation":"POST /payments","grade":2}],"split":"test"}
+{"id":"cjk-07","category":"cjk","lang":"zh","query":"退款状态","relevant":[{"service":"cjk","operation":"GET /refunds/{id}","grade":2}],"split":"dev"}
+{"id":"cjk-08","category":"cjk","lang":"ja","query":"商品一覧","relevant":[{"service":"cjk","operation":"GET /products","grade":2}],"split":"test"}
+{"id":"cjk-09","category":"cjk","lang":"ja","query":"商品詳細","relevant":[{"service":"cjk","operation":"GET /products/{id}","grade":2}],"split":"dev"}
+{"id":"cjk-10","category":"cjk","lang":"ja","query":"カート","relevant":[{"service":"cjk","operation":"POST /carts","grade":2}],"split":"test"}
+{"id":"cjk-11","category":"cjk","lang":"ja","query":"配送状況","relevant":[{"service":"cjk","operation":"GET /shipments/{id}","grade":2}],"split":"dev"}
+{"id":"cjk-12","category":"cjk","lang":"ja","query":"クーポン","relevant":[{"service":"cjk","operation":"GET /coupons","grade":2}],"split":"test"}
+{"id":"cjk-13","category":"cjk","lang":"ja","query":"ガード","relevant":[{"service":"cjk","operation":"GET /guards","grade":2}],"split":"dev"}
+{"id":"cjk-14","category":"cjk","lang":"ja","query":"カード","relevant":[{"service":"cjk","operation":"GET /cards","grade":2}],"split":"test"}
+{"id":"cjk-15","category":"cjk","lang":"zh","query":"订单编号","relevant":[{"service":"cjk","operation":"GET /orders/{id}","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-01","category":"paraphrase_no_alias","lang":"en","query":"void a purchase","relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-02","category":"paraphrase_no_alias","lang":"en","query":"money back for an order","relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-03","category":"paraphrase_no_alias","lang":"en","query":"printable bill","relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-04","category":"paraphrase_no_alias","lang":"en","query":"who am I","relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-05","category":"paraphrase_no_alias","lang":"en","query":"how much does delivery cost","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-06","category":"paraphrase_no_alias","lang":"en","query":"move goods between depots","relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-07","category":"paraphrase_no_alias","lang":"en","query":"revenue by month","relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-08","category":"paraphrase_no_alias","lang":"en","query":"is the service alive","relevant":[{"service":"shop","operation":"GET /health","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-09","category":"paraphrase_no_alias","lang":"en","query":"where is my parcel","relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-10","category":"paraphrase_no_alias","lang":"en","query":"check a discount code","relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-11","category":"paraphrase_no_alias","lang":"en","query":"staff member details","relevant":[{"service":"shop","operation":"GET /employees/{employeeId}","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-12","category":"paraphrase_no_alias","lang":"en","query":"shop branches","relevant":[{"service":"shop","operation":"GET /stores","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-13","category":"paraphrase_no_alias","lang":"en","query":"change item cost","relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"dev"}
+{"id":"paraphrase_no_alias-14","category":"paraphrase_no_alias","lang":"en","query":"reward balance","relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"test"}
+{"id":"paraphrase_no_alias-15","category":"paraphrase_no_alias","lang":"en","query":"authenticate with credentials","relevant":[{"service":"shop","operation":"POST /auth/login","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-01","category":"paraphrase_alias","lang":"en","query":"purchase detail","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-02","category":"paraphrase_alias","lang":"en","query":"cancel purchase","requiresAlias":true,"relevant":[{"service":"shop","operation":"DELETE /orders/{orderId}","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-03","category":"paraphrase_alias","lang":"en","query":"bill pdf","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}/pdf","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-04","category":"paraphrase_alias","lang":"en","query":"send bill by email","requiresAlias":true,"relevant":[{"service":"shop","operation":"POST /invoices/{invoiceId}/send","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-05","category":"paraphrase_alias","lang":"en","query":"buyer search","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /customers","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-06","category":"paraphrase_alias","lang":"en","query":"parcel tracking of an order","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-07","category":"paraphrase_alias","lang":"en","query":"voucher validation","requiresAlias":true,"relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-08","category":"paraphrase_alias","lang":"en","query":"money back for order","requiresAlias":true,"relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-09","category":"paraphrase_alias","lang":"en","query":"revenue report","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-10","category":"paraphrase_alias","lang":"en","query":"change cost of product","requiresAlias":true,"relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-11","category":"paraphrase_alias","lang":"en","query":"staff member info","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /employees/{employeeId}","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-12","category":"paraphrase_alias","lang":"vi","query":"đơn mua chi tiết","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /orders/{orderId}","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-13","category":"paraphrase_alias","lang":"vi","query":"người mua","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /customers","grade":2},{"service":"shop","operation":"GET /customers/{customerId}","grade":2}],"split":"dev"}
+{"id":"paraphrase_alias-14","category":"paraphrase_alias","lang":"vi","query":"bưu kiện của đơn mua","requiresAlias":true,"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"test"}
+{"id":"paraphrase_alias-15","category":"paraphrase_alias","lang":"en","query":"sign in","requiresAlias":true,"relevant":[{"service":"shop","operation":"POST /auth/login","grade":2}],"split":"dev"}
+{"id":"response_field-01","category":"response_field","lang":"en","query":"taxCode","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}","grade":2},{"service":"shop","operation":"GET /invoices","grade":2}],"split":"dev"}
+{"id":"response_field-02","category":"response_field","lang":"en","query":"loyaltyPoints","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /customers/{customerId}","grade":2},{"service":"shop","operation":"GET /customers","grade":2},{"service":"shop","operation":"POST /customers","grade":2},{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"test"}
+{"id":"response_field-03","category":"response_field","lang":"en","query":"estimatedDeliveryDate","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2}],"split":"dev"}
+{"id":"response_field-04","category":"response_field","lang":"en","query":"availableQuantity","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /inventory/warehouses/{warehouseId}/stock","grade":2}],"split":"test"}
+{"id":"response_field-05","category":"response_field","lang":"en","query":"qrCodeUrl","fields":["responseField"],"relevant":[{"service":"shop","operation":"POST /payments","grade":2},{"service":"shop","operation":"GET /payments/{paymentId}","grade":2}],"split":"dev"}
+{"id":"response_field-06","category":"response_field","lang":"en","query":"discountAmount","fields":["responseField"],"relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"test"}
+{"id":"response_field-07","category":"response_field","lang":"en","query":"receiptNumber","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /api/v2/orders/{orderId}/receipt","grade":2}],"split":"dev"}
+{"id":"response_field-08","category":"response_field","lang":"en","query":"accessToken","fields":["responseField"],"relevant":[{"service":"shop","operation":"POST /auth/login","grade":2},{"service":"shop","operation":"POST /auth/refresh","grade":2},{"service":"shop","operation":"POST /auth/otp/verify","grade":2}],"split":"test"}
+{"id":"response_field-09","category":"response_field","lang":"en","query":"refundStatus","fields":["responseField"],"relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"dev"}
+{"id":"response_field-10","category":"response_field","lang":"en","query":"openingHours","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /stores","grade":2}],"split":"test"}
+{"id":"response_field-11","category":"response_field","lang":"en","query":"expiringPoints","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /loyalty/{customerId}/points","grade":2}],"split":"dev"}
+{"id":"response_field-12","category":"response_field","lang":"en","query":"orderCount","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"test"}
+{"id":"response_field-13","category":"response_field","lang":"en","query":"merchantReference","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /api/v2/orders/{orderId}/receipt","grade":2}],"split":"dev"}
+{"id":"response_field-14","category":"response_field","lang":"en","query":"displayName","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"test"}
+{"id":"response_field-15","category":"response_field","lang":"en","query":"carrierName","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/shipments","grade":2},{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"dev"}
+{"id":"nested_schema-01","category":"nested_schema","lang":"en","query":"companyName","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}","grade":2},{"service":"shop","operation":"GET /invoices","grade":2}],"split":"dev"}
+{"id":"nested_schema-02","category":"nested_schema","lang":"en","query":"buyer.taxCode","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /invoices/{invoiceId}","grade":2},{"service":"shop","operation":"GET /invoices","grade":2}],"split":"test"}
+{"id":"nested_schema-03","category":"nested_schema","lang":"en","query":"changedBy","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/history","grade":2}],"split":"dev"}
+{"id":"nested_schema-04","category":"nested_schema","lang":"en","query":"reservedQuantity","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /inventory/warehouses/{warehouseId}/stock","grade":2}],"split":"test"}
+{"id":"nested_schema-05","category":"nested_schema","lang":"en","query":"provinceName","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /provinces","grade":2}],"split":"dev"}
+{"id":"nested_schema-06","category":"nested_schema","lang":"en","query":"membershipLevel","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /customers/{customerId}","grade":2},{"service":"shop","operation":"GET /customers","grade":2},{"service":"shop","operation":"POST /customers","grade":2}],"split":"test"}
+{"id":"nested_schema-07","category":"nested_schema","lang":"en","query":"changedAt","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /orders/{orderId}/history","grade":2}],"split":"dev"}
+{"id":"nested_schema-08","category":"nested_schema","lang":"en","query":"roles","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /users/me","grade":2}],"split":"test"}
+{"id":"nested_schema-09","category":"nested_schema","lang":"en","query":"revenue","fields":["responseField"],"relevant":[{"service":"shop","operation":"GET /reports/sales","grade":2}],"split":"dev"}
+{"id":"nested_schema-10","category":"nested_schema","lang":"en","query":"fromWarehouseId","fields":["requestField"],"relevant":[{"service":"shop","operation":"POST /inventory/transfers","grade":2}],"split":"test"}
+{"id":"nested_schema-11","category":"nested_schema","lang":"en","query":"reasonCode","fields":["requestField"],"relevant":[{"service":"shop","operation":"POST /orders/{orderId}/refunds","grade":2}],"split":"dev"}
+{"id":"nested_schema-12","category":"nested_schema","lang":"en","query":"dateOfBirth","fields":["requestField"],"relevant":[{"service":"shop","operation":"POST /customers","grade":2}],"split":"test"}
+{"id":"nested_schema-13","category":"nested_schema","lang":"en","query":"effectiveFrom","fields":["requestField"],"relevant":[{"service":"shop","operation":"PUT /products/{sku}/price","grade":2}],"split":"dev"}
+{"id":"nested_schema-14","category":"nested_schema","lang":"en","query":"weightGrams","relevant":[{"service":"shop","operation":"GET /shipping/fees","grade":2}],"split":"test"}
+{"id":"nested_schema-15","category":"nested_schema","lang":"en","query":"orderTotal","fields":["requestField"],"relevant":[{"service":"shop","operation":"POST /promotions/validate","grade":2}],"split":"dev"}
+{"id":"multi_service-01","category":"multi_service","lang":"en","query":"get customer","relevant":[{"service":"shop","operation":"GET /customers/{customerId}","grade":2},{"service":"crm-a","operation":"GET /customers/{id}","grade":2},{"service":"crm-b","operation":"GET /customers/{id}","grade":2}],"split":"dev"}
+{"id":"multi_service-02","category":"multi_service","lang":"en","query":"get customer","service":"crm-a","relevant":[{"service":"crm-a","operation":"GET /customers/{id}","grade":2}],"split":"test"}
+{"id":"multi_service-03","category":"multi_service","lang":"en","query":"get customer","service":"crm-b","relevant":[{"service":"crm-b","operation":"GET /customers/{id}","grade":2}],"split":"dev"}
+{"id":"multi_service-04","category":"multi_service","lang":"en","query":"list contacts","relevant":[{"service":"crm-a","operation":"GET /contacts","grade":2},{"service":"crm-b","operation":"GET /contacts","grade":2}],"split":"test"}
+{"id":"multi_service-05","category":"multi_service","lang":"en","query":"list contacts","service":"crm-b","relevant":[{"service":"crm-b","operation":"GET /contacts","grade":2}],"split":"dev"}
+{"id":"multi_service-06","category":"multi_service","lang":"en","query":"create lead","relevant":[{"service":"crm-a","operation":"POST /leads","grade":2},{"service":"crm-b","operation":"POST /leads","grade":2}],"split":"test"}
+{"id":"multi_service-07","category":"multi_service","lang":"en","query":"create lead","service":"crm-a","relevant":[{"service":"crm-a","operation":"POST /leads","grade":2}],"split":"dev"}
+{"id":"multi_service-08","category":"multi_service","lang":"en","query":"deal detail","relevant":[{"service":"crm-a","operation":"GET /deals/{dealId}","grade":2},{"service":"crm-b","operation":"GET /deals/{dealId}","grade":2}],"split":"test"}
+{"id":"multi_service-09","category":"multi_service","lang":"en","query":"deal detail","service":"crm-b","relevant":[{"service":"crm-b","operation":"GET /deals/{dealId}","grade":2}],"split":"dev"}
+{"id":"multi_service-10","category":"multi_service","lang":"en","query":"move deal to stage","relevant":[{"service":"crm-a","operation":"POST /deals/{dealId}/stage","grade":2}],"split":"test"}
+{"id":"multi_service-11","category":"multi_service","lang":"en","query":"support tickets","relevant":[{"service":"crm-b","operation":"GET /tickets","grade":2},{"service":"crm-b","operation":"POST /tickets","grade":1}],"split":"dev"}
+{"id":"multi_service-12","category":"multi_service","lang":"en","query":"create ticket","relevant":[{"service":"crm-b","operation":"POST /tickets","grade":2}],"split":"test"}
+{"id":"multi_service-13","category":"multi_service","lang":"en","query":"list activities","relevant":[{"service":"crm-a","operation":"GET /activities","grade":2}],"split":"dev"}
+{"id":"multi_service-14","category":"multi_service","lang":"en","query":"getCustomer","relevant":[{"service":"shop","operation":"GET /customers/{customerId}","grade":2},{"service":"crm-a","operation":"GET /customers/{id}","grade":2},{"service":"crm-b","operation":"GET /customers/{id}","grade":2}],"split":"test"}
+{"id":"multi_service-15","category":"multi_service","lang":"en","query":"/customers/{id}","relevant":[{"service":"crm-a","operation":"GET /customers/{id}","grade":2},{"service":"crm-b","operation":"GET /customers/{id}","grade":2}],"split":"dev"}
+{"id":"no_result-01","category":"no_result","lang":"en","query":"kubernetes pod autoscaling","relevant":[],"split":"dev"}
+{"id":"no_result-02","category":"no_result","lang":"en","query":"mortgage interest rate","relevant":[],"split":"test"}
+{"id":"no_result-03","category":"no_result","lang":"en","query":"quantum teleportation","relevant":[],"split":"dev"}
+{"id":"no_result-04","category":"no_result","lang":"vi","query":"dự báo thời tiết","relevant":[],"split":"test"}
+{"id":"no_result-05","category":"no_result","lang":"vi","query":"đặt vé máy bay","relevant":[],"split":"dev"}
+{"id":"no_result-06","category":"no_result","lang":"vi","query":"bảo hiểm xã hội","relevant":[],"split":"test"}
+{"id":"no_result-07","category":"no_result","lang":"zh","query":"航班预订","relevant":[],"split":"dev"}
+{"id":"no_result-08","category":"no_result","lang":"zh","query":"天气预报","relevant":[],"split":"test"}
+{"id":"no_result-09","category":"no_result","lang":"ja","query":"飛行機の予約","relevant":[],"split":"dev"}
+{"id":"no_result-10","category":"no_result","lang":"ko","query":"달 탐사선","relevant":[],"split":"test"}
+{"id":"no_result-11","category":"no_result","lang":"en","query":"xyzzy plugh","relevant":[],"split":"dev"}
+{"id":"no_result-12","category":"no_result","lang":"en","query":"blockchain smart contract","relevant":[],"split":"test"}
+{"id":"no_result-13","category":"no_result","lang":"en","query":"cardToken","fields":["responseField"],"relevant":[],"split":"dev"}
+{"id":"no_result-14","category":"no_result","lang":"en","query":"couponCode","fields":["responseField"],"relevant":[],"split":"test"}
+{"id":"no_result-15","category":"no_result","lang":"en","query":"zzzzqqqq","relevant":[],"split":"dev"}

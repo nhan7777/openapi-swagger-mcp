@@ -3,6 +3,7 @@ import { CredentialSources } from './auth/credentials.js';
 import type { AppConfig, AuthBindings, ProfileConfig, SecretCfg, TNode } from './config.js';
 import { ToolError } from './types.js';
 import { isReadableFile } from './util.js';
+import { derivedOrigins } from './policy/network.js';
 
 export interface CheckItem {
   field: string;
@@ -91,6 +92,11 @@ export function checkConfig(cfg: AppConfig): CheckReport {
     if (svc.spec.auth) bindings(svc.spec.auth);
     if ('file' in svc.spec.source) addPath(`${f}.spec`, isReadableFile(svc.spec.source.file), 'SPEC_UNREADABLE', svc.spec.source.file);
     if (svc.tls.caFile) addPath(`${f}.tls.caFile`, isReadableFile(svc.tls.caFile), 'CA_UNREADABLE', svc.tls.caFile);
+  }
+  // Every origin the services imply must be listed when network.allow exists (the runtime refuses to start otherwise).
+  if (cfg.network) {
+    const allow = new Set(cfg.network.allow);
+    for (const d of derivedOrigins(cfg)) add(d.field, allow.has(d.origin) ? 'ok' : 'error', allow.has(d.origin) ? undefined : 'NETWORK_NOT_ALLOWED');
   }
   cfg.files.uploadRoots.forEach((r, i) => addPath(`files.uploadRoots.${i}`, isUsableDir(r), 'ROOT_MISSING', r));
   cfg.files.exportRoots.forEach((r, i) => addPath(`files.exportRoots.${i}`, isUsableDir(r), 'ROOT_MISSING', r));

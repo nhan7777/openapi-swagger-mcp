@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +58,23 @@ const spec = {
       post: { operationId: 'refreshSession', requestBody: { content: { 'application/x-www-form-urlencoded': { schema: { type: 'object' } } } }, responses: { 200: { description: 'ok' } } },
     },
     '/me': { get: { operationId: 'me', responses: { 200: { description: 'ok' }, 401: { description: 'no' } } } },
+    '/bounce': { get: { operationId: 'bounce', responses: { 302: { description: 'redirects to another origin' } } } },
+    '/hop': { get: { operationId: 'hop', responses: { 302: { description: 'redirects inside the service' }, 200: { description: 'ok' } } } },
   },
+};
+
+// A destination that must never be contacted: counts connections and drops them.
+let canaryConnections = 0;
+const canary = net.createServer((s) => {
+  canaryConnections++;
+  s.destroy();
+});
+await new Promise((r) => canary.listen(0, '127.0.0.1', r));
+const canaryOrigin = `http://127.0.0.1:${canary.address().port}`;
+const pause = (ms) => {
+  const t = Promise.withResolvers();
+  setTimeout(t.resolve, ms);
+  return t.promise;
 };
 
 const requests = [];
@@ -79,7 +96,9 @@ const server = http.createServer((req, res) => {
     } else if (req.url === '/me') {
       meAuth.push({ authorization: req.headers.authorization, cookie: req.headers.cookie });
       json(200, { user: 'smoke' });
-    } else res.writeHead(404).end();
+    } else if (req.url === '/bounce') res.writeHead(302, { location: `${canaryOrigin}/steal` }).end();
+    else if (req.url === '/hop') res.writeHead(302, { location: '/me' }).end();
+    else res.writeHead(404).end();
   });
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -107,7 +126,8 @@ fs.writeFileSync(
         },
       },
     },
-    files: { artifactRoot: path.join(tmp, 'artifacts'), exportRoots: [path.join(tmp, 'exports')] },
+    network: { allow: [origin] },
+    files: { artifactRoot: path.join(tmp, 'artifacts'), exportRoots: [path.join(tmp, 'exports')], retention: { keepOnExit: true } },
   }),
 );
 
@@ -152,6 +172,24 @@ try {
   const found = await call('search_operations', { query: 'widget picture' });
   assert.equal(found.data.results[0].operation, 'GET /widgets/{id}');
   assert.equal(found.data.results[0].revision, revision);
+
+  // Field-aware reverse lookup, Unicode and refusal of unsearchable queries, over the real stdio server.
+  const byField = await call('search_operations', { query: 'picture', fields: ['responseField'] });
+  assert.equal(byField.data.results[0].operation, 'GET /widgets/{id}');
+  assert.equal(byField.data.results[0].matches[0].field, 'responseField');
+  assert.deepEqual(Object.keys(byField.data.targets), ['smoke']);
+  const noRequestField = await call('search_operations', { query: 'picture', fields: ['requestField'] });
+  assert.equal(noRequestField.data.total, 0);
+  const han = await call('search_operations', { query: '图片' });
+  assert.equal(han.isError, false);
+  assert.equal(han.data.total, 0, 'a Han query must not degrade to every operation');
+  const emoji = await call('search_operations', { query: '🙂' });
+  assert.equal(emoji.isError, true);
+  assert.equal(emoji.data.error.code, 'QUERY_UNPROCESSABLE');
+  const firstPage = await call('search_operations', { query: '', limit: 2 });
+  assert.equal(firstPage.data.mode, 'browse');
+  const staleCursor = await call('search_operations', { query: 'me', cursor: firstPage.data.nextCursor });
+  assert.equal(staleCursor.data.error.code, 'CURSOR_INVALID');
 
   const schema = await call('get_operation_schema', { service: 'smoke', operation: 'GET /widgets/{id}', revision });
   assert.equal(schema.data.parameters[0].name, 'id');
@@ -207,9 +245,74 @@ try {
   assert.deepEqual(meAuth.at(-1), { authorization: 'Bearer AT-2', cookie: 'sid=smoke' });
   assert.ok(!stderr.includes('RT-1') && !stderr.includes('AT-2') && !stderr.includes('smoke-grant'), 'auth values leaked to stderr');
 
+  // ---- outbound boundary: a redirect to another origin is not followed, and the canary is never contacted
+  const bounce = await call('invoke_operation', { service: 'smoke', operation: 'GET /bounce', revision, auth: { mode: 'anonymous' }, followRedirects: true });
+  assert.equal(bounce.data.http.status, 302);
+  assert.ok(bounce.data.notes.some((n) => n.includes('cross-origin redirect')), 'cross-origin redirect must be reported, not followed');
+  const hop = await call('invoke_operation', { service: 'smoke', operation: 'GET /hop', revision, followRedirects: true });
+  assert.equal(hop.data.http.status, 200);
+  assert.equal(hop.data.http.redirects.length, 1);
+  assert.equal(canaryConnections, 0, 'a destination outside the allowed origins was contacted');
+
   assert.ok(!stderr.includes(image.toString('base64').slice(0, 64)), 'response body leaked to stderr');
   await client.close();
-  console.log(`smoke ok: ${pkgMeta.name}@${pkgMeta.version}, ${tools.length} tools, invoke output ${inv.bytes} bytes`);
+
+  // ---- trace and artifact lifecycle: the retained session, read after the server has shut down
+  const artifactRoot = path.join(tmp, 'artifacts');
+  const retained = fs.readdirSync(artifactRoot).filter((n) => n.startsWith('s-'));
+  assert.equal(retained.length, 1, 'keepOnExit must leave exactly this session');
+  const sdir = path.join(artifactRoot, retained[0]);
+  const ownerFile = path.join(sdir, 'owner.json');
+  let owner = JSON.parse(fs.readFileSync(ownerFile, 'utf8'));
+  for (let i = 0; i < 100 && owner.endedAt === undefined; i++) {
+    await pause(50); // bounded wait for the server process to finish its shutdown
+    owner = JSON.parse(fs.readFileSync(ownerFile, 'utf8'));
+  }
+  assert.ok(Number.isFinite(Date.parse(owner.endedAt)), 'a session kept on purpose must be marked as ended');
+
+  const traceDir = path.join(sdir, 'trace');
+  const segments = fs.readdirSync(traceDir).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+  const traceText = segments.map((f) => fs.readFileSync(path.join(traceDir, f), 'utf8')).join('');
+  const events = traceText.trim().split('\n').map((l) => JSON.parse(l));
+  const starts = events.filter((e) => e.t === 'exchange.start');
+  const ends = new Map(events.filter((e) => e.t === 'exchange.end').map((e) => [e.requestId, e]));
+  const received = starts.filter((s) => ends.get(s.requestId)?.sendState === 'response_received');
+  assert.equal(received.length, requests.length, 'every request the backend received has a traced exchange, and no other exchange claims a response');
+  assert.ok(starts.every((s) => ends.has(s.requestId)), 'every exchange ends');
+  const notSent = starts.filter((s) => ends.get(s.requestId)?.sendState === 'not_sent');
+  assert.equal(notSent.length, 0, 'the stale-revision call is a blocker before any exchange, not a not_sent exchange');
+  assert.deepEqual(starts.filter((s) => s.purpose === 'auth_recipe').map((s) => s.request.url.replace(origin, '')), ['/session/exchange', '/session/refresh']);
+  const hops = starts.filter((s) => s.relation === 'redirect');
+  assert.equal(hops.length, 1);
+  assert.equal(hops[0].hop, 1);
+  assert.equal(starts.find((s) => s.requestId === hops[0].parentId)?.purpose, 'business');
+  const runs = events.filter((e) => e.t === 'auth.start');
+  assert.deepEqual(runs.map((r) => [r.trigger, r.action]), [['explicit', 'authenticate'], ['explicit', 'refresh']]);
+  assert.deepEqual(events.filter((e) => e.t === 'auth.end').map((e) => e.outcome), ['published', 'published']);
+  const tracedTools = events.filter((e) => e.t === 'call.start').map((e) => e.tool);
+  assert.ok(['list_apis', 'search_operations', 'get_operation_schema', 'invoke_operation', 'read_artifact', 'export_artifact', 'authenticate', 'get_auth_status'].every((t) => tracedTools.includes(t)), `tool calls missing from the trace: ${tracedTools}`);
+
+  // Tokens are never in the trace or the artifact metadata, but the raw login response is a readable local artifact.
+  const metadata = fs.readFileSync(path.join(sdir, 'artifacts.jsonl'), 'utf8');
+  for (const secret of ['AT-1', 'AT-2', 'RT-1', 'RT-2', 'smoke-grant']) {
+    assert.ok(!traceText.includes(secret) && !metadata.includes(secret), `${secret} leaked into the trace or artifact metadata`);
+  }
+  const loginBody = ends.get(starts.find((s) => s.purpose === 'auth_recipe').requestId).body;
+  assert.equal(loginBody.origin, 'response_body');
+  assert.ok(fs.readFileSync(path.join(sdir, loginBody.id), 'utf8').includes('AT-1'), 'the raw login response must be kept as a local artifact');
+  assert.equal(canaryConnections, 0, 'a destination outside the allowed origins was contacted');
+
+  // ---- default lifecycle: without keepOnExit the session directory is removed on a normal shutdown
+  const plain = path.join(tmp, 'plain');
+  fs.mkdirSync(plain);
+  fs.writeFileSync(path.join(plain, 'config.json'), JSON.stringify({ version: 1, services: { smoke: { baseUrl: origin, spec: { source: { file: path.join(tmp, 'spec.json') } } } }, files: { artifactRoot: path.join(plain, 'artifacts') } }));
+  const client2 = new Client({ name: 'smoke-default', version: '0.0.0' });
+  await client2.connect(new StdioClientTransport({ command: process.execPath, args: [cli, '--config', path.join(plain, 'config.json')], stderr: 'pipe' }));
+  assert.equal(JSON.parse((await client2.callTool({ name: 'list_apis', arguments: {} })).content[0].text).services[0].state, 'ready');
+  await client2.close();
+  for (let i = 0; i < 100 && fs.readdirSync(path.join(plain, 'artifacts')).length > 0; i++) await pause(50);
+  assert.deepEqual(fs.readdirSync(path.join(plain, 'artifacts')), [], 'artifact session directory not cleaned on exit');
+  console.log(`smoke ok: ${pkgMeta.name}@${pkgMeta.version}, ${tools.length} tools, ${tracedTools.length} tool calls traced, ${received.length} exchanges matched ${requests.length} backend requests, invoke output ${inv.bytes} bytes`);
 } catch (e) {
   failed = true;
   console.error('smoke FAILED:', e instanceof Error ? e.stack : e);
@@ -218,12 +321,7 @@ try {
   await client.close().catch(() => undefined);
   server.closeAllConnections?.();
   server.close();
-  const artifactDir = path.join(tmp, 'artifacts');
-  const leftovers = fs.existsSync(artifactDir) ? fs.readdirSync(artifactDir) : [];
-  if (!failed && leftovers.length) {
-    failed = true;
-    console.error('smoke FAILED: artifact session directory not cleaned on exit:', leftovers);
-  }
+  canary.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);
