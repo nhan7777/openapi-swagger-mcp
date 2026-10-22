@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "frozenBefore": "any ranking implementation or tuning",
+  "evaluatedOn": "split=test, system=current, k=5 unless stated",
+  "falsePositiveDefinition": "A no_result query counts as a false positive when the system returns ANY hit, including fuzzy hits. Unprocessable-query errors count as correct abstention. For other categories, irrelevant hits in the top 5 are reported as precision@5 and are not hidden.",
+  "tuning": "Weights and thresholds may be tuned on split=dev only; split=test is reported once per parameter version. Changing corpus, labels or targets creates a new corpus version and the old results are reported alongside.",
+  "targets": [
+    { "categories": ["exact_path", "exact_operation_id"], "metric": "success@1", "min": 1.0 },
+    { "categories": ["typo", "acronym"], "metric": "recall@5", "min": 0.85 },
+    { "categories": ["vi", "vi_no_diacritics", "en", "cjk"], "metric": "recall@5", "min": 0.85 },
+    { "categories": ["response_field", "nested_schema"], "metric": "recall@5", "min": 0.8 },
+    { "categories": ["multi_service"], "metric": "recall@5", "min": 0.9 },
+    { "categories": ["paraphrase_alias"], "metric": "recall@5", "min": 0.8 },
+    { "categories": ["paraphrase_no_alias"], "metric": "recall@5", "min": null, "note": "reported only; input to the semantic-local decision" },
+    { "categories": ["no_result"], "metric": "falsePositiveRate", "max": 0.2, "note": "any returned hit is a false positive" },
+    { "categories": ["*"], "metric": "mrr", "relativeTo": "baseline-0.1.2", "rule": "not lower than baseline; any exception is reported explicitly" }
+  ],
+  "latency": { "kind": "measured", "note": "p50/p95 recorded per run with machine details; never asserted in permanent tests" }
+}
