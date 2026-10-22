@@ -28,6 +28,9 @@ jobs:
       - run: npm run gen:schema
       - name: Reject uncommitted schema changes
         run: git diff --exit-code -- config.schema.json
+      - run: npm run gen:assets
+      - name: Reject uncommitted inspector asset changes
+        run: git diff --exit-code -- src/inspector/assets.ts
       - run: npm test
       - run: npm run smoke
       - run: npm run verify:package
