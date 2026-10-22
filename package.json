@@ -38,7 +38,8 @@
     "test:integration": "vitest run tests/integration",
     "smoke": "node tests/smoke.mjs",
     "gen:notices": "node scripts/gen-notices.mjs",
-    "prepack": "node scripts/clean-dist.mjs && npm run build && npm run gen:schema && npm run gen:notices",
+    "prepack": "node scripts/clean-dist.mjs && npm run gen:assets && npm run build && npm run gen:schema && npm run gen:notices",
+    "gen:assets": "node scripts/gen-inspector-assets.mjs",
     "gen:schema": "node scripts/gen-schema.mjs",
     "verify:package": "node scripts/verify-package.mjs"
   },
