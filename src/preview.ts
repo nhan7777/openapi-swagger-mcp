@@ -88,8 +88,9 @@ function renderBody(buf: Buffer, observed: ObservedBody, budget: number): Previe
   // The serializer only builds UTF-8 text in memory (JSON, ASCII forms, multipart text parts); anything else is not shown.
   if (!isUtf8(buf)) return { ...base, notShownReason: 'not_text' };
   if (budget < 64) return { ...base, notShownReason: 'over_budget' };
+  if (buf.length === 0) return { ...base, text: '', shownBytes: 0 };
   // JSON escaping can only lengthen a string, so start from the byte budget and halve until the real JSON size fits.
-  for (let take = Math.min(buf.length, budget); take >= 16; take = Math.floor(take / 2)) {
+  for (let take = Math.min(buf.length, budget); take > 0; take = Math.floor(take / 2)) {
     const p = utf8Prefix(buf, take);
     const body: PreviewBody = { ...base, text: p.text, shownBytes: p.bytes, ...(p.bytes < buf.length ? { truncated: true } : {}) };
     if (bytesOf(body) <= budget) return body;

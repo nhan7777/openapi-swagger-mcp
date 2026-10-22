@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../../src/server.js';
 import type { PrepareArgs } from '../../src/request-prep.js';
+import type { RequestInput } from '../../src/types.js';
 import { startHarness, SERVICES, type Harness } from '../helpers/harness.js';
 import { DIALECTS } from '../helpers/specs.js';
 
@@ -63,11 +64,12 @@ async function connect() {
 
 describe.each(DIALECTS)('preview equals the request invoke prepares (%s)', (d) => {
   const svc = SERVICES[d];
-  test.each([
+  const cases: Array<[string, RequestInput]> = [
     ['getItem', { path: { id: 5 }, query: { tags: ['a', 'b c'], flag: true, u: [1, 2] }, headers: { 'X-Trace': 't1' }, cookies: { c1: 'v' } }],
     ['createItem', { body: { json: { value: { name: '', qty: 'not-a-number', extra: null } } } }],
     ['postForm', { body: { form: { fields: { tag: ['a', 'b'], n: 3 } } } }],
-  ] as const)('%s: observation, diagnostics and body match the exchange the invoke recorded', async (opId, input) => {
+  ];
+  test.each(cases)('%s: observation, diagnostics and body match the exchange the invoke recorded', async (opId, input) => {
     const pv = preview(svc, opId, { input, ...anon });
     expect(pv.sent).toBe(false);
     expect(pv.ready).toBe(true);
