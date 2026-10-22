@@ -24,7 +24,7 @@
   },
   "sha256": {
     "queries.jsonl": "47fbc5f588aa587f99944547fa34fd429e58176e08e50da8aec7a934b24134cb",
-    "targets.json": "44a82d8dafc7e6bed5d522b56332f401bbe0bb40a1bee28e9283a9b6671e35e8",
+    "targets.json": "609e6b27c2994cc0b76c3ae2ee9c1b0f6834431805a64ad04f716e557e4cd385",
     "aliases.json": "511c8ccf23ec5d3da80b7cc611c08676357cc3beb67c6cc6d82790dd08140549",
     "corpus/specs/cjk.json": "7a5aed3f6dd25a4ba9b93d01603e7bcd27160bc11eb17263014b69cf6696f661",
     "corpus/specs/crm-a.json": "f12d09228a4f86d5cc40d6c8991d17c9515504acdec5766b1d4f9be839f232f5",

@@ -9,10 +9,11 @@
     { "categories": ["typo", "acronym"], "metric": "recall@5", "min": 0.85 },
     { "categories": ["vi", "vi_no_diacritics", "en", "cjk"], "metric": "recall@5", "min": 0.85 },
     { "categories": ["response_field", "nested_schema"], "metric": "recall@5", "min": 0.8 },
-    { "categories": ["multi_service"], "metric": "recall@5", "min": 0.9 },
+    { "categories": ["multi_service"], "metric": "success@1", "min": 1.0, "when": "query has service", "note": "approved: Success@1 = 1.00 when a service is supplied" },
+    { "categories": ["multi_service"], "metric": "recall@5", "min": 0.9, "when": "query has no service", "note": "approved: both services returned when unscoped" },
     { "categories": ["paraphrase_alias"], "metric": "recall@5", "min": 0.8 },
     { "categories": ["paraphrase_no_alias"], "metric": "recall@5", "min": null, "note": "reported only; input to the semantic-local decision" },
-    { "categories": ["no_result"], "metric": "falsePositiveRate", "max": 0.2, "note": "any returned hit is a false positive" },
+    { "categories": ["no_result"], "metric": "falsePositiveRate", "max": 0.1, "note": "approved ceiling; any returned hit, including fuzzy, is a false positive; not to be loosened without coordinator approval" },
     { "categories": ["*"], "metric": "mrr", "relativeTo": "baseline-0.1.2", "rule": "not lower than baseline; any exception is reported explicitly" }
   ],
   "latency": { "kind": "measured", "note": "p50/p95 recorded per run with machine details; never asserted in permanent tests" }
