@@ -23,6 +23,7 @@
     "dist",
     "README.md",
     "docs/clients.md",
+    "docs/local-execution.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "examples",
