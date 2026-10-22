@@ -374,6 +374,15 @@ export function loadConfig(configPathArg: string): AppConfig {
   } catch (e) {
     throw new ToolError('CONFIG_UNREADABLE', `cannot read config file: ${(e as NodeJS.ErrnoException).code ?? 'error'}`);
   }
+  return loadConfigFromText(configPath, text);
+}
+
+/**
+ * Compile config text as if it were stored at `configPathArg` (format from its extension, relative paths from its
+ * directory). Reads no config file; the file need not exist yet.
+ */
+export function loadConfigFromText(configPathArg: string, text: string): AppConfig {
+  const configPath = path.resolve(configPathArg);
   const doc = parseText(configPath, text);
   preflightTemplates(doc);
   const parsed = ConfigSchema.safeParse(doc);
