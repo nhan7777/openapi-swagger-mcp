@@ -135,3 +135,31 @@ export type SecretDto = { value: string } | { recorded: false };
 export interface ErrorDto {
   error: { code: string; message: string };
 }
+
+export interface AuthRunDto {
+  authRunId: string;
+  /** `service:<id>` or `profile:<id>`. */
+  target: string;
+  action: 'authenticate' | 'refresh';
+  trigger: 'explicit' | 'unauthorized';
+  callId?: string;
+  parentId?: string;
+  startedAt: string;
+  durationMs?: number;
+  outcome?: 'published' | 'stale_discarded' | 'failed';
+  errorCode?: string;
+  /** Capture names only. */
+  captured: string[];
+  requestIds: string[];
+  joinedRequestIds: string[];
+  joinedTruncated: boolean;
+  partial: boolean;
+}
+
+export interface PolicyBlockDto {
+  at: string;
+  service: string;
+  operation: string;
+  rule: string;
+  callId?: string;
+}
