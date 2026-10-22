@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.nhan7777/openapi-swagger-mcp",
   "title": "OpenAPI Swagger MCP",
-  "description": "Discover Swagger/OpenAPI operations and call configured dev/UAT APIs through 10 fixed tools.",
+  "description": "Discover Swagger/OpenAPI operations and call configured dev/UAT APIs through 11 fixed tools.",
   "repository": {
     "url": "https://github.com/nhan7777/openapi-swagger-mcp",
     "source": "github"
