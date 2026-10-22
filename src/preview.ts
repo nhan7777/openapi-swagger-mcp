@@ -1,6 +1,7 @@
 // Offline request preview. It renders the outcome of the SAME preparation function `invoke_operation` runs before it
 // sends (P1 `prepareRequest`, bound by the caller). This module is handed a function, not an App: it has no way to
 // reach the transport, the artifact store, auth recovery or the trace recorder.
+import { isUtf8 } from 'node:buffer';
 import type { AuthInfo, Blocker, PrepareArgs, PrepareOutcome, PreparedInvocation, Target } from './request-prep.js';
 import type { ObservedBody, ObservedField } from './trace/types.js';
 import type { Diagnostics } from './types.js';
@@ -13,14 +14,13 @@ export interface PreviewBody {
   /** Exact byte length of the body the transport would send. */
   bytes: number;
   backing: ObservedBody['backing'];
-  /** Memory-backed bodies only. UTF-8 text, or base64 when the bytes are not valid UTF-8. */
+  /** Memory-backed bodies only: the body as UTF-8 text (possibly cut at a character boundary, see `truncated`). */
   text?: string;
-  encoding?: 'utf8' | 'base64';
   /** Bytes of the body represented by `text` (less than `bytes` when `truncated`). */
   shownBytes?: number;
   truncated?: boolean;
   /** Why there is no `text`. File-backed bodies are never opened by preview. */
-  notShownReason?: 'file_backed' | 'over_budget';
+  notShownReason?: 'file_backed' | 'over_budget' | 'not_text';
   files?: NonNullable<ObservedBody['files']>;
   /** Bytes differ between two builds of the same request (multipart boundary). */
   volatile?: ObservedBody['volatile'];
@@ -67,26 +67,14 @@ export const PREVIEW_NOTES: readonly string[] = [
 /** Fraction of the tool output budget a preview may use; the rest is headroom for the tool envelope. */
 const BUDGET_FRACTION = 0.9;
 const URL_KEEP_BYTES = 2048;
-const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 const bytesOf = (o: unknown): number => Buffer.byteLength(JSON.stringify(o), 'utf8');
 
-/** Longest prefix of `buf` (at most `max` bytes) that is valid UTF-8, or undefined when even a trimmed prefix is not. */
-function utf8Prefix(buf: Buffer, max: number): { text: string; bytes: number } | undefined {
-  const end = Math.min(buf.length, max);
-  // A cut can only split the last code point (at most 3 trailing bytes); anything older that is invalid is binary.
-  for (let trim = 0; trim <= 3 && end - trim >= 0; trim++) {
-    try {
-      const text = utf8.decode(buf.subarray(0, end - trim));
-      return { text, bytes: end - trim };
-    } catch {
-      if (end === buf.length && trim === 0 && buf.length <= max) {
-        // The whole body was requested and is invalid: not text. (Trimming would silently drop real bytes.)
-        return undefined;
-      }
-    }
-  }
-  return undefined;
+/** Longest prefix of `buf`, at most `max` bytes, that ends on a UTF-8 character boundary. `buf` must be valid UTF-8. */
+function utf8Prefix(buf: Buffer, max: number): { text: string; bytes: number } {
+  let end = Math.min(buf.length, max);
+  while (end > 0 && end < buf.length && (buf[end]! & 0xc0) === 0x80) end--; // never split a multi-byte character
+  return { text: buf.subarray(0, end).toString('utf8'), bytes: end };
 }
 
 /** Render as much of a memory-backed body as fits in `budget` bytes of JSON. */
@@ -97,22 +85,14 @@ function renderBody(buf: Buffer, observed: ObservedBody, budget: number): Previe
     backing: 'memory',
     ...(observed.volatile ? { volatile: observed.volatile } : {}),
   };
+  // The serializer only builds UTF-8 text in memory (JSON, ASCII forms, multipart text parts); anything else is not shown.
+  if (!isUtf8(buf)) return { ...base, notShownReason: 'not_text' };
   if (budget < 64) return { ...base, notShownReason: 'over_budget' };
-  // JSON escaping never makes a string shorter than its UTF-8 bytes, base64 is 4/3: these caps are upper bounds to try.
-  let take = Math.min(buf.length, budget);
-  const asText = utf8Prefix(buf, take);
-  for (let i = 0; i < 24; i++) {
-    let body: PreviewBody;
-    if (asText) {
-      const p = utf8Prefix(buf, take)!;
-      body = { ...base, text: p.text, encoding: 'utf8', shownBytes: p.bytes, ...(p.bytes < buf.length ? { truncated: true } : {}) };
-    } else {
-      const n = Math.min(buf.length, Math.floor((take * 3) / 4));
-      body = { ...base, text: buf.subarray(0, n).toString('base64'), encoding: 'base64', shownBytes: n, ...(n < buf.length ? { truncated: true } : {}) };
-    }
+  // JSON escaping can only lengthen a string, so start from the byte budget and halve until the real JSON size fits.
+  for (let take = Math.min(buf.length, budget); take >= 16; take = Math.floor(take / 2)) {
+    const p = utf8Prefix(buf, take);
+    const body: PreviewBody = { ...base, text: p.text, shownBytes: p.bytes, ...(p.bytes < buf.length ? { truncated: true } : {}) };
     if (bytesOf(body) <= budget) return body;
-    take = Math.floor(take / 2);
-    if (take < 16) break;
   }
   return { ...base, notShownReason: 'over_budget' };
 }
@@ -219,7 +199,7 @@ export class Previewer {
     }
     if (cut.size) req.truncatedLists = [...cut];
     if (!fits() && req.body?.text !== undefined) {
-      const { text: _text, encoding: _enc, shownBytes: _shown, truncated: _t, ...rest } = req.body;
+      const { text: _text, shownBytes: _shown, truncated: _t, ...rest } = req.body;
       req.body = { ...rest, notShownReason: 'over_budget' };
     }
     return result;
