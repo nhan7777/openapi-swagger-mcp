@@ -4,7 +4,7 @@ A local MCP server that connects your AI assistant to the dev/UAT APIs you confi
 
 For example: **“Find the order details endpoint and explain the required parameters before calling it.”**
 
-You configure the API addresses and authentication in a YAML or JSON file. Your MCP client starts the server, and your assistant uses its **ten fixed tools** regardless of how many endpoints you have.
+You configure the API addresses and authentication in a YAML or JSON file. Your MCP client starts the server, and your assistant uses its **eleven fixed tools** regardless of how many endpoints you have.
 
 **New here?** Follow [Quick start](#quick-start), then try [Everyday usage](#everyday-usage). You do not need to write tool calls yourself.
 
@@ -44,6 +44,14 @@ The URLs above are examples. They only work if your own API is running there, so
 
 **Before continuing:** replace both URLs and save the file. Note its absolute path; you will use that same path in the next two steps.
 
+**Shortcut:** `init` writes a minimal config for you and prints the matching client entry. It validates the config before creating the file, never overwrites an existing file and never edits your client's files:
+
+```bash
+npx -y @nhan7777/openapi-swagger-mcp@0.1.2 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml --client claude-code
+```
+
+Add `--bearer-env ORDERS_TOKEN` to read a bearer token from an environment variable (no flag accepts the token itself). A relative `--spec` file path is taken from the directory where you run the command. `--client` is one of `generic`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `codex`, `omp`, `kiro`; the snippet it prints uses the config's absolute path.
+
 ### 2. Check the config
 
 ```bash
@@ -53,6 +61,14 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.dev.ya
 `ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
 
 **Expected result:** the command exits with code `0` and the report contains `"ok": true`. If it does not, fix the reported field before connecting your client.
+
+`--check` stays offline on purpose. When you also want to know whether the spec can be loaded, run the separate network check, which you must ask for explicitly:
+
+```bash
+npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.dev.yaml --check-specs
+```
+
+`--check-specs` loads each service's spec (and the external `$ref`s the loader is allowed to fetch) through the same network policy as the server, then prints one JSON report. It never logs in, never calls a business endpoint and never creates the artifact directory. Static spec credentials, if you configured `spec.auth`, are sent to the spec's own origin, as at server start.
 
 ### 3. Add the server to your MCP client
 
@@ -144,11 +160,15 @@ After checking the operation and providing a real test ID:
 
 An HTTP response and a contract diagnostic answer different questions: the status tells you what the API returned; diagnostics tell you how the request or response compares with the spec. A successful status does not prove the response matches the contract.
 
-### Prepare a write before authorizing it
+### Preview a request before sending it
 
-> Find the create-order operation in orders. Read its contract and propose a request using the test data I provide. Show the target service and payload, then wait for my confirmation before sending.
+> Preview the create-order operation in orders with the test data I provide. Show the target service, URL and payload and tell me if anything blocks it. Do not send it.
 
-This is an instruction to your assistant, not a server-enforced approval gate. POST, PUT, PATCH and DELETE requests can change real data.
+`preview_operation` takes the same arguments as `invoke_operation` (without `capture` and `followRedirects`) and runs the same request preparation, but never sends anything: no business request, no login or refresh, no spec fetch. It returns `sent: false`, `ready`, the target, the method, URL, headers, cookies, query pairs and body, the request diagnostics and the auth binding in use. Credentials the server would inject are shown by binding name only, never by value. Values you or the assistant typed are shown as typed, and invalid data stays invalid.
+
+If something is missing (a credential, a loaded spec, an allowed destination) `ready` is `false`, `blockers` say why, and no request is shown. A preview is not an approval and is not a guarantee: `invoke_operation` prepares the request again and can differ if the input, config, spec revision or auth state changed. Only the first request is previewed; redirects, a 401 refresh and cookies set by a response happen only on invoke. A multipart boundary changes on every build, and headers such as `host` and `content-length` are added by the HTTP library, so neither is part of the preview.
+
+Whether to send is still your decision and your client's confirmation prompt. This server does not enforce an approval step. POST, PUT, PATCH and DELETE requests can change real data.
 
 ### Choose a service or account explicitly
 
@@ -597,6 +617,8 @@ The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and 
 | `1` | A config, source, file or root problem |
 | `2` | CLI usage error, such as a missing `--config` or an unknown flag |
 
+The separate `--check-specs` network check prints `{ ok, services }` with each service's `state` (`ready` or `unavailable`), spec `revision`, visible `operationCount` and, when it failed, a bounded `error`. It exits `0` when every service is ready, `1` when one is unavailable, and `2` when combined with `--check`.
+
 ### Common problems
 
 | Symptom / code | What to do |
@@ -890,6 +912,18 @@ The server is a local process: it calls the APIs you configured directly and kee
 - Validation depends on spec quality. An unknown format is recorded as unverified, not as passed. Search is deterministic token scoring; the project makes no claims about token savings or semantic search accuracy.
 - Compatibility note: older config and tool forms were removed with no aliases. `bearer.login`, profile `components`/`recovery`, service-level `allowedProfiles`/`defaultProfile`, `$source`/`$component`, `authenticate_profile` and `get_profile_status` no longer work. Use the forms in this guide.
 
+## Try the demo
+
+To see the tools work without your own API or any real credential:
+
+```bash
+npx -y @nhan7777/openapi-swagger-mcp@0.1.2 demo
+```
+
+`demo` starts a synthetic backend on `127.0.0.1` with invented data, writes a throwaway project (two services: `demo-shop`, anonymous, and `demo-account`, with login and refresh) and serves it over stdio like any other config, so put the same command in your client entry instead of `--config`. It prints the backend address and config path to stderr; stdout stays reserved for MCP. Ask for `demo-account` to authenticate first, then call its `GET /me`. `POST /orders` answers `422` and echoes what it received, which is useful for seeing that invalid data is sent unchanged, and `GET /reports/large` returns a body big enough to be stored as an artifact.
+
+The backend has no real authentication, so other processes on your machine can reach it while the demo runs. The temporary directory is deleted on exit. `--dir <path>` uses a new or empty directory instead and keeps it.
+
 ## Tool reference
 
 | Tool | Use it to |
@@ -897,6 +931,7 @@ The server is a local process: it calls the APIs you configured directly and kee
 | `list_apis` | See services, spec readiness and revision, operation counts, spec `warnings`, auth mode and capability, and spec load errors |
 | `search_operations` | Search by identifier, text, parameter, request/response field or schema name, with match reasons, field scopes and paging |
 | `get_operation_schema` | See an operation's parameters, body, response schemas, security and refs. Large contracts go to an artifact |
+| `preview_operation` | See the request `invoke_operation` would prepare, or why it cannot be prepared, without sending anything |
 | `invoke_operation` | Send a real request and get the HTTP outcome, diagnostics and an optional capture into a session |
 | `refresh_specs` | Reload and validate specs. On failure the previous valid snapshot is kept |
 | `authenticate` | Run authentication, run an explicit refresh, or reload static auth sources |
