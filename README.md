@@ -560,7 +560,7 @@ The destination must be under `files.exportRoots`. Call `export_artifact`:
 | `text` | The text of the artifact, or of the field at the pointer |
 | `decoded` | Strict base64 decoding of the string |
 
-Export never overwrites an existing file and never follows a symlink out of a root. File names from `Content-Disposition` are not trusted. Artifacts exist only for the lifetime of the process and are removed on normal shutdown; exported files stay.
+Export never overwrites an existing file and never follows a symlink out of a root. File names from `Content-Disposition` are not trusted. By default artifacts exist only for the lifetime of the process and are removed on normal shutdown; exported files stay. See [Trace, policies and session lifecycle](#trace-policies-and-session-lifecycle) to keep a session on purpose.
 
 To mark a base64 field explicitly in the config:
 
@@ -574,7 +574,7 @@ encodedFields:
 
 `*` matches one path segment. Add `operation` to limit a rule to one operation. Schema hints such as `format: byte`, `contentEncoding` and data URIs also help confirm an encoding. A string that merely looks like base64 is not asserted to be base64.
 
-If a response exceeds `responseBytes`, you still get the status and headers, but the body may be incomplete (`bodyComplete: false`). Total artifact storage is capped by `sessionArtifactBytes`.
+If a response exceeds `responseBytes`, you still get the status and headers, but the body may be incomplete (`bodyComplete: false`). Total artifact storage is capped by `sessionArtifactBytes`, and the number of artifacts by `maxArtifacts`.
 
 ## Troubleshooting
 
@@ -648,7 +648,7 @@ A complete `invoke_operation` call:
 
 `operation` is the key returned by search, usually `METHOD /path`. It is not the `operationId`. `revision` is the spec revision, which stops you calling an operation based on an outdated contract. When the spec changes, call `refresh_specs` with `{"service":"orders"}`, then search or read the contract again to get the new revision. A failed refresh keeps the last valid snapshot.
 
-`search_operations` accepts `service`, `method`, `tag`, `includeDeprecated`, `limit` and `cursor`. Pass `nextCursor` with the same query to get the next page. Changing the query or the revision invalidates an old cursor.
+`search_operations` accepts `service`, `method`, `tag`, `includeDeprecated`, `fields`, `limit` and `cursor`. See [Search](#search) for what it matches, how results are ranked and what the extra output fields mean. Pass `nextCursor` with the same query to get the next page. Changing the query, a spec revision, the search config or the operation filter invalidates an old cursor; the error says which (`details.reason`).
 
 ### Request bodies
 
@@ -730,7 +730,7 @@ Requests that cannot be sent safely are blocked locally: a missing path paramete
 - `authRecovery`: the state of a background refresh after a 401. It does not mean the request was replayed.
 - Network, TLS and timeout failures do not produce a fake HTTP status. `error.mayHaveBeenSent` says whether the request may already have left the machine. Be careful about retrying write operations.
 
-Redirects are not followed by default. With `followRedirects: true`, only same-origin redirects are followed, within a limit: 303, and POST after 301/302, become GET; 307/308 keep the method and body. Credentials are never forwarded to another origin.
+Redirects are not followed by default. With `followRedirects: true`, only same-origin redirects that stay under the configured `baseUrl` path prefix are followed, within a limit: 303, and POST after 301/302, become GET; 307/308 keep the method and body. Credentials are never forwarded to another origin. A redirect that leaves the service origin, leaves the base path or leaves the allowed destinations is not followed: you get the 3xx response and a note.
 
 ## Advanced configuration and limitations
 
@@ -818,8 +818,68 @@ Declare only the values you want to change. Every limit is a positive integer wi
 | `toolOutputBytes` | 32768 bytes | Budget for one tool result |
 | `artifactPageBytes` | 16384 bytes | One artifact read page |
 | `maxRedirects` | 5 | Redirects followed when enabled |
+| `maxArtifacts` | 20000 | Artifacts per session; more are cut like a full quota |
+| `traceBytes` | 64 MiB | Disk budget of one session's trace; at least 4 × `traceSegmentBytes` |
+| `traceSegmentBytes` | 4 MiB | One trace file |
+| `traceEventBytes` | 64 KiB | One trace event; at most half a segment |
+| `traceIndexBytes` | 32 MiB | Memory budget of the trace index, write queue included (a conservative estimate, not a heap limit) |
+| `traceQueueBytes` | 4 MiB | Trace bytes waiting to be written; more events are dropped and counted |
+| `traceMaxOpenRecords` | 256 | Calls, exchanges and auth runs in progress at once |
+| `traceInputInlineBytes` | 4096 bytes | Agent input kept inline in the trace; larger input becomes one artifact |
+| `traceFieldValueBytes` | 4096 bytes | A longer header, cookie or query value is not recorded |
+| `requestBodyTraceBytes` | 1 MiB | A larger request body is not stored as an artifact |
 
 `uploadRoots` and `exportRoots` default to empty, so upload and export are disabled until you declare them. `artifactRoot` may not exist yet; the server creates it at runtime.
+
+### Search
+
+`search_operations` is lexical and runs inside the server process on loaded specs. It uses no model, native inference runtime, embedding service or search network call. The optional semantic/model experiment was removed; `search.semantic` is not supported.
+
+- **What is indexed:** path, `METHOD /path`, operationId, tags, summary, description, parameter names and descriptions, request and response field paths (nested, through `$ref`, arrays and `allOf/anyOf/oneOf`, response headers included), schema names and field descriptions. Request and response are kept apart.
+- **Text:** Unicode-aware. Case, compatibility forms and accents on Latin letters are folded (`don hang` finds `đơn hàng`), marks in other scripts are kept (`が` and `か` differ). `orderId`, `order_id`, `order-id` and `OrderID` meet. Han, Kana, Thai, Lao, Khmer and Myanmar text is matched by character and character pair, not by dictionary words.
+- **Ranking:** an exact path, `METHOD /path` or operationId (case-sensitive) comes first, then a concrete path that matches a template (`/orders/42` finds `/orders/{id}`), then a folded identifier match, then lexical matches weighted by field, then typo matches. Typo matching only applies to words that exist nowhere in the searched fields, within a fixed edit distance and a fixed comparison budget.
+- **`fields`:** restricts where terms may match: `identifier`, `text`, `parameter`, `requestField`, `responseField`, `schema`. `{"query":"taxCode","fields":["responseField"]}` finds operations that return `taxCode` and not ones that only accept it.
+- **Query:** an empty query browses (no ranking). A query without a letter or digit, such as an emoji, is an error (`QUERY_UNPROCESSABLE`), never a list of everything. `fields` needs a query.
+- **Result:** each hit has `tier`, a score and up to three `matches` (field, original text, the terms that matched, `exact|token|alias|fuzzy`, and where a schema field lives). `targets` maps each service in the page to its `baseUrl`. `unavailableServices` lists configured services without a valid spec. `coverage` appears when an index is incomplete, with the reason.
+- **Output budget:** the whole result is kept within `limits.toolOutputBytes`: evidence is trimmed first, then the page shrinks, and `nextCursor` always continues after the last hit returned. If one hit with its required metadata cannot fit, the call fails with `OUTPUT_TOO_LARGE`.
+- **Operation filter:** operations hidden by a service's `operations` filter are never indexed, so they cannot be found or shown as evidence. The filter's identity is part of every cursor.
+- **Aliases:** words your specs do not use can be declared in `search.aliases`. Nothing is treated as a synonym unless you list it, and groups do not chain.
+
+```yaml
+search:
+  aliases:
+    - { terms: ["đơn hàng", "order"], services: [orders] }
+  limits:
+    schemaDepth: 6                   # more keys: see examples/config.example.yaml
+```
+
+Index memory is bounded by `search.limits.indexBudgetBytes` (default 64 MiB, a conservative estimate and not a heap measurement), split equally between the configured services. A spec that does not fit is indexed in priority order (identifiers first) and `coverage` says what is missing. Retrieval quality is measured on a small synthetic corpus in `bench/search`; see its README for the method and for results that miss their targets.
+
+Lexical discovery does not infer undeclared business synonyms. On the frozen synthetic dev2 dataset, no-alias paraphrase recall@5 is 1/8 and MRR is 0.041667, below the released baseline's paraphrase MRR 0.25; false positives are 6/64. These are limitations, not improved-quality claims. Prior semantic experiment reports/results are historical evidence only; they do not describe shipped functionality.
+
+### Trace, policies and session lifecycle
+
+The server is a local process: it calls the APIs you configured directly and keeps raw responses in local artifacts. It does not send telemetry or call embedding, reranking or model services. Content the assistant reads can still be forwarded by your MCP client to its model provider; that is outside this server. If the client runs in a container or on another machine, requests start from there.
+
+**What is recorded.** Every tool call and every HTTP exchange this process makes gets an id: `callId`, `requestId` (one per HTTP exchange, including each redirect hop, login, refresh and spec or `$ref` fetch) and `authRunId`. `invoke_operation` returns `trace: { callId, requestIds }`. A record has the service, operation, spec revision, timing, a send state and links to artifacts (the request body, the agent's input when it is large, the response body). Raw bodies are never copied into the trace or logs; they stay in artifacts. The server only knows what it did itself: it does not infer a task from requests that happen close together.
+
+| Send state | Meaning |
+|---|---|
+| `not_sent` | Nothing left the process (policy block, connection refused, DNS or TLS failure before sending) |
+| `maybe_sent` | The request may have been sent but there is no response (timeout, reset) |
+| `response_received` | An HTTP response arrived. 4xx and 5xx are normal outcomes, not failures |
+
+**What is not recorded.** Header, cookie and query values are recorded as the agent sent them. Credentials the server injected from your config, a session or the cookie jar are recorded by name only (`unrecordedReason: credential`). For logins and refreshes the request is not stored (it is built from template secrets) and response header values are not recorded; the raw response body is kept as a local artifact (mode 0600) whatever the status, because it is debugging data. That artifact can contain tokens. The trace is not a packet capture: it observes the HTTP client, and `host`, `content-length` and `connection` are added by the library and not observed.
+
+**Reading it.** The trace is read inside the process through `App.trace` (bounded queries that filter before paging). No MCP tool exposes it yet. With `files.retention.keepOnExit: true` the session directory keeps the JSON Lines trace (`trace/seg-N.jsonl`), the artifacts and `artifacts.jsonl` for manual inspection.
+
+**Bounds.** Trace memory, disk and write queue are hard-capped (see the limits above). When a cap is reached the trace stops recording what does not fit, counts it (`droppedEvents`, `droppedRecords`) and reports `degraded` instead of failing the tool call. Writes are asynchronous: only data that was flushed is on disk after a crash. Artifacts are never evicted while the process runs.
+
+**Destinations.** Business requests go to the service's `baseUrl` origin, a recipe to the origin of the service it names, a spec to its own origin and `$ref`s to `allowedOrigins`. Add a top-level `network.allow` list of exact origins to require that all of them are listed (the server refuses to start otherwise and `--check` reports `NETWORK_NOT_ALLOWED`). The check compares origin strings at every redirect hop. It does not look at the IP a name resolves to, proxies or CAs, and it does not block private addresses: a loopback or VPN endpoint you configure is reachable. It is not an SSRF or DNS-rebinding defence.
+
+**Operation filter.** `services.<id>.operations` with `include` and `exclude` rules (`method`, `path` glob, `operationId`, `tag`) hides operations from search, contracts and invocation; a hidden operation answers `OPERATION_NOT_ALLOWED` and sends nothing. Your configured login and refresh recipes are not filtered; the agent cannot run them. See the `operation-filter` recipe in the example config.
+
+**Session lifecycle.** By default a normal shutdown deletes the session directory and the next start deletes directories left by a crashed process. `files.retention` changes this: `keepOnExit` keeps the directory and marks it as ended on purpose, `crashedSessionMaxAgeHours` keeps crash leftovers for that long, and `maxRetainedBytes` trims retained sessions oldest first. Shutdown waits for captures and reads that are running and does not delete files under them.
 
 ### Limitations
 
@@ -835,7 +895,7 @@ Declare only the values you want to change. Every limit is a positive integer wi
 | Tool | Use it to |
 |---|---|
 | `list_apis` | See services, spec readiness and revision, operation counts, spec `warnings`, auth mode and capability, and spec load errors |
-| `search_operations` | Search by path, operationId, tag, summary or description, with paging |
+| `search_operations` | Search by identifier, text, parameter, request/response field or schema name, with match reasons, field scopes and paging |
 | `get_operation_schema` | See an operation's parameters, body, response schemas, security and refs. Large contracts go to an artifact |
 | `invoke_operation` | Send a real request and get the HTTP outcome, diagnostics and an optional capture into a session |
 | `refresh_specs` | Reload and validate specs. On failure the previous valid snapshot is kept |

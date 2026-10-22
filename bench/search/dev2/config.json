@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "services": {
+    "shop": {
+      "baseUrl": "http://127.0.0.1:9",
+      "spec": {
+        "source": {
+          "file": "specs/shop.json"
+        }
+      }
+    },
+    "crm-a": {
+      "baseUrl": "http://127.0.0.1:10",
+      "spec": {
+        "source": {
+          "file": "specs/crm-a.json"
+        }
+      }
+    },
+    "crm-b": {
+      "baseUrl": "http://127.0.0.1:11",
+      "spec": {
+        "source": {
+          "file": "specs/crm-b.json"
+        }
+      }
+    },
+    "cjk": {
+      "baseUrl": "http://127.0.0.1:12",
+      "spec": {
+        "source": {
+          "file": "specs/cjk.json"
+        }
+      }
+    },
+    "erp": {
+      "baseUrl": "http://127.0.0.1:13",
+      "spec": {
+        "source": {
+          "file": "specs/erp.json"
+        }
+      }
+    },
+    "hr": {
+      "baseUrl": "http://127.0.0.1:14",
+      "spec": {
+        "source": {
+          "file": "specs/hr.json"
+        }
+      }
+    },
+    "media": {
+      "baseUrl": "http://127.0.0.1:15",
+      "spec": {
+        "source": {
+          "file": "specs/media.json"
+        }
+      }
+    }
+  },
+  "search": {
+    "aliases": [
+      {
+        "terms": [
+          "order",
+          "purchase",
+          "đơn mua"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "invoice",
+          "bill",
+          "phiếu xuất"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "customer",
+          "buyer",
+          "người mua"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "shipment",
+          "parcel",
+          "bưu kiện"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "coupon",
+          "voucher"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "refund",
+          "money back"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "sales",
+          "revenue"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "price",
+          "cost"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "employee",
+          "staff member"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "login",
+          "sign in"
+        ],
+        "services": [
+          "shop"
+        ]
+      },
+      {
+        "terms": [
+          "time off",
+          "leave"
+        ],
+        "services": [
+          "hr"
+        ]
+      },
+      {
+        "terms": [
+          "salary",
+          "payroll"
+        ],
+        "services": [
+          "hr"
+        ]
+      },
+      {
+        "terms": [
+          "agreement",
+          "contract"
+        ],
+        "services": [
+          "hr"
+        ]
+      },
+      {
+        "terms": [
+          "staff",
+          "employee"
+        ],
+        "services": [
+          "hr"
+        ]
+      },
+      {
+        "terms": [
+          "team",
+          "department"
+        ],
+        "services": [
+          "hr"
+        ]
+      },
+      {
+        "terms": [
+          "clip",
+          "video"
+        ],
+        "services": [
+          "media"
+        ]
+      },
+      {
+        "terms": [
+          "subtitle",
+          "caption"
+        ],
+        "services": [
+          "media"
+        ]
+      },
+      {
+        "terms": [
+          "follow",
+          "subscribe"
+        ],
+        "services": [
+          "media"
+        ]
+      }
+    ]
+  }
+}

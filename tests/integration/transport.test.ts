@@ -111,6 +111,18 @@ describe('redirects', () => {
 });
 
 describe('failures are not retried', () => {
+  test('a body-open failure releases the concurrency slot for the next request', async () => {
+    h = await startHarness({ config: { limits: { maxConcurrentRequests: 1 } } });
+    h.backend.json('GET /me', 200, { ok: true });
+    await expect(h.app.transport.send('o30', {
+      method: 'POST', url: h.backend.origin + '/items', headers: [],
+      body: { length: 1, open() { throw new Error('source unavailable'); } },
+    }, { purpose: 'business' })).rejects.toThrow('source unavailable');
+    const recovered = await h.call('o30', 'me');
+    expect(recovered.http?.status).toBe(200);
+    expect(h.backend.count('/items')).toBe(0);
+  }, 1500);
+
   test('timeout on a write: reported as possibly sent, exactly one request reached the backend', async () => {
     h = await startHarness({ config: { limits: { requestTimeoutMs: 300 } } });
     h.backend.on('POST /items', () => new Promise(() => undefined));
