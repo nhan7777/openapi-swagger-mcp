@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
 import { ConfigSchema, LimitsSchema, type AuthMethods, type InlineService, type OperationRule, type OwnerExtras, type Recipe, type Secret, type Template } from './config-schema.js';
+import type { InspectorSchema } from './config-schema.js';
 import { normalizeOrigin } from './policy/network.js';
 import { log } from './log.js';
 import { ToolError, type Json } from './types.js';
@@ -125,6 +126,7 @@ export interface AppConfig {
   /** Normalised exact origins. Absent: only destinations derived from services are reachable. */
   network?: { allow: string[] };
   trace: { enabled: boolean };
+  inspector: z.infer<typeof InspectorSchema>;
   search: SearchConfig;
   encodedFields: EncodedFieldRule[];
   limits: Limits;
@@ -523,6 +525,7 @@ export function loadConfigFromText(configPathArg: string, text: string): AppConf
     files: { uploadRoots: raw.files.uploadRoots.map(rel), exportRoots: raw.files.exportRoots.map(rel), artifactRoot, retention: raw.files.retention },
     ...(network ? { network } : {}),
     trace: raw.trace,
+    inspector: raw.inspector,
     search: compileSearchConfig(raw.search, new Set(services.keys())),
     encodedFields: raw.encodedFields,
     limits: raw.limits,

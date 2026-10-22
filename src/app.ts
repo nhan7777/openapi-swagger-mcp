@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { ArtifactStore } from './artifacts/store.js';
 import { CredentialSources } from './auth/credentials.js';
 import { ProfileManager } from './auth/profiles.js';
@@ -6,6 +7,7 @@ import { SessionManager } from './auth/sessions.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { Diagnostician } from './http/diagnostics.js';
 import { Transport } from './http/transport.js';
+import { startInspector, type InspectorHandle } from './inspector/server.js';
 import { Invoker } from './invoke.js';
 import { log } from './log.js';
 import { NetworkPolicy } from './policy/network.js';
@@ -16,12 +18,19 @@ import { SpecLoader } from './specs/loader.js';
 import { SpecRegistry } from './specs/registry.js';
 import { TraceStore } from './trace/store.js';
 import type { TraceReader, TraceRecorder } from './trace/types.js';
+import { errorInfo } from './util.js';
+
+const pkgJson: unknown = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+if (typeof pkgJson !== 'object' || pkgJson === null || !('version' in pkgJson) || typeof pkgJson.version !== 'string') throw new Error('package.json must have a string version');
+const pkgVersion = pkgJson.version;
 
 const RECOVERY_DRAIN_MS = 2000;
 
 /** Everything one process needs. One config file per process. */
 export class App {
   private closing?: Promise<void>;
+  /** Optional read-only local inspector; present only when `inspector.enabled` and it started. */
+  inspector?: InspectorHandle;
 
   private constructor(
     readonly cfg: AppConfig,
@@ -69,6 +78,16 @@ export class App {
     const app = new App(cfg, transport, registry, creds, profiles, sessions, recovery, artifacts, invoker, operationPolicy, networkPolicy, recorder, recorder, prepDeps, previewer, abort);
     await registry.init();
     log.info('started', { services: cfg.services.size, ready: registry.states().filter((s) => s.state === 'ready').length });
+    if (cfg.inspector.enabled) {
+      try {
+        app.inspector = await startInspector(
+          { ...cfg.inspector, pageBytes: Math.min(cfg.inspector.pageBytes, cfg.limits.artifactPageBytes) },
+          { version: pkgVersion, configPath: cfg.configPath, trace: app.trace, artifacts, services: new Map([...cfg.services].map(([id, s]) => [id, { baseOrigin: s.baseOrigin, basePath: s.basePath }])) },
+        );
+      } catch (e) {
+        log.warn('inspector unavailable', { code: errorInfo(e).code }); // MCP keeps working without it
+      }
+    }
     return app;
   }
 
@@ -84,6 +103,8 @@ export class App {
   close(): Promise<void> {
     this.closing ??= (async () => {
       this.abort.abort(new Error('shutdown'));
+      // Inspector first: its descriptor goes away and in-flight body reads finish before the artifact store closes.
+      await this.inspector?.close().catch(() => undefined);
       await Promise.race([this.recovery.waitIdle(), new Promise<void>((r) => setTimeout(r, RECOVERY_DRAIN_MS).unref())]);
       await this.transport.close().catch(() => undefined);
       // Trace first: open exchanges end as 'aborted' and the writer drains before the directory is removed.
