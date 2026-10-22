@@ -280,7 +280,7 @@ async function showCall(it, d) {
     el('p', { class: 'muted' }, `${c.startedAt} · ${c.requestCount} exchanges · ${c.authRunCount} auth runs · ${c.policyBlockCount} policy blocks${c.item.partial ? ' · incomplete record' : ''}`),
     el('h3', {}, 'Arguments (allow-listed)'),
     el('pre', {}, JSON.stringify(c.args, null, 2)),
-    c.summary ? [el('h3', {}, 'Summary'), el('pre', {}, JSON.stringify(c.summary, null, 2))] : undefined,
+    ...(c.summary ? [el('h3', {}, 'Summary'), el('pre', {}, JSON.stringify(c.summary, null, 2))] : []),
     el('h3', {}, 'Agent input'),
   );
   const slot = el('div');
