@@ -51,6 +51,12 @@ const positive: Array<[string, unknown]> = [
   ['escaped capture pointer', svc({ auth: { bearer: { token: { fromCredential: 't' } } }, refresh: recipe({ capture: { credentials: { t: { bodyPointer: '/a~1b/~0c' } } } }) })],
   ['fromFile root pointer', svc({ auth: { bearer: { token: { fromFile: './s.json', pointer: '' } } } })],
   ['unique successStatuses', svc({ auth: { bearer: { token: 'x' } }, refresh: recipe({ successStatuses: [200, 201] }) })],
+  ['network allow exact origins', { network: { allow: ['http://127.0.0.1:9', 'https://api.uat.internal:8443/'] }, ...svc({}) }],
+  ['operation filter', svc({ operations: { include: [{ tag: 't' }, { path: '/orders/**' }], exclude: [{ method: 'DELETE' }, { operationId: 'purgeAll' }] } })],
+  ['trace off and retention', { trace: { enabled: false }, files: { retention: { keepOnExit: true, crashedSessionMaxAgeHours: 24, maxRetainedBytes: 1048576 } }, ...svc({}) }],
+  ['trace limits', { limits: { traceBytes: 8388608, traceSegmentBytes: 1048576, traceEventBytes: 65536, traceMaxOpenRecords: 64, maxArtifacts: 100 }, ...svc({}) }],
+  ['search aliases and limits', { search: { aliases: [{ terms: ['đơn hàng', 'order'], services: ['a'] }], limits: { schemaDepth: 4, indexBudgetBytes: 1048576 } }, ...svc({}) }],
+  ['inspector enabled with options', { inspector: { enabled: true, host: '::1', port: 0, pageBytes: 8192, formatMaxBytes: 524288, timelineLimit: 100 }, ...svc({}) }],
 ];
 
 const negative: Array<[string, unknown]> = [
@@ -96,6 +102,24 @@ const negative: Array<[string, unknown]> = [
   ['capture bodyPointer with a bad escape', svc({ auth: { bearer: { token: { fromCredential: 't' } } }, refresh: recipe({ capture: { credentials: { t: { bodyPointer: '/a~2' } } } }) })],
   ['fromFile pointer without a slash', svc({ auth: { bearer: { token: { fromFile: './s.json', pointer: 'a' } } } })],
   ['duplicate successStatuses', svc({ auth: { bearer: { token: 'x' } }, refresh: recipe({ successStatuses: [200, 200] }) })],
+  ['wildcard origin', { network: { allow: ['https://*.dev.internal'] }, ...svc({}) }],
+  ['origin with a path', { network: { allow: ['http://h/x'] }, ...svc({}) }],
+  ['origin with userinfo', { network: { allow: ['http://u:p@h'] }, ...svc({}) }],
+  ['origin with a query', { network: { allow: ['http://h?x=1'] }, ...svc({}) }],
+  ['empty network allow list', { network: { allow: [] }, ...svc({}) }],
+  ['empty operation rule', svc({ operations: { exclude: [{}] } })],
+  ['operation rule with an unknown key', svc({ operations: { exclude: [{ verb: 'GET' }] } })],
+  ['operation path without a leading slash', svc({ operations: { exclude: [{ path: 'orders' }] } })],
+  ['empty include list', svc({ operations: { include: [] } })],
+  ['unknown retention key', { files: { retention: { keep: true } }, ...svc({}) }],
+  ['alias group of one phrase', { search: { aliases: [{ terms: ['only'] }] }, ...svc({}) }],
+  ['unknown search key', { search: { semantic: true }, ...svc({}) }],
+  ['search limit above its maximum', { search: { limits: { termBytes: 100000 } }, ...svc({}) }],
+  ['inspector bound to all interfaces', { inspector: { enabled: true, host: '0.0.0.0' }, ...svc({}) }],
+  ['inspector bound to the IPv6 wildcard', { inspector: { host: '::' }, ...svc({}) }],
+  ['inspector timeline limit above 200', { inspector: { timelineLimit: 201 }, ...svc({}) }],
+  ['inspector port out of range', { inspector: { port: 70000 }, ...svc({}) }],
+  ['unknown inspector key', { inspector: { enabled: true, allowRemote: true }, ...svc({}) }],
 ];
 
 describe('JSON Schema and loadConfig agree on structure', () => {
@@ -116,6 +140,10 @@ describe('cross-reference rules are runtime-only and checked separately', () => 
     ['authentication depending only on its own capture', svc({ auth: { bearer: { token: { fromCredential: 't' } } }, authentication: recipe({ request: { operation: 'POST /x', body: { json: { x: { fromCredential: 't' } } } } }) })],
     ['unknown recipe service', svc({ auth: { bearer: { token: { fromCredential: 't' } } }, refresh: recipe({ request: { service: 'zz', operation: 'POST /x' } }) })],
     ['capture of unknown destination without cookie opt-in', svc({ auth: { bearer: { token: { fromCredential: 't' } } }, refresh: recipe({ capture: { credentials: { t: { bodyPointer: '/t' } }, cookies: true } }) })],
+    ['trace budget below four segments', { limits: { traceBytes: 1048576, traceSegmentBytes: 1048576 }, ...svc({}) }],
+    ['trace event larger than half a segment', { limits: { traceSegmentBytes: 1048576, traceEventBytes: 1048576 }, ...svc({}) }],
+    ['alias term without a letter or digit', { search: { aliases: [{ terms: ['order', '--'] }] }, ...svc({}) }],
+    ['alias for an unknown service', { search: { aliases: [{ terms: ['a b', 'c d'], services: ['nope'] }] }, ...svc({}) }],
   ];
   test.each(cases)('JSON Schema passes, loadConfig rejects: %s', (_n, cfg) => {
     expect(validate(cfg), JSON.stringify(validate.errors?.[0])).toBe(true);

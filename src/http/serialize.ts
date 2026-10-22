@@ -8,6 +8,8 @@ import type { Operation, ParamDef } from '../specs/model.js';
 import { ToolError, type Issue, type Json, type RequestInput, type UploadPart } from '../types.js';
 import { isInside, isPlainObject } from '../util.js';
 import { assertHeaderSafe, type BodySource, type PreparedRequest } from './transport.js';
+import { credentialField, valuedField } from '../trace/observe.js';
+import type { FieldSource, ObservedBody, ObservedField, RequestObservation } from '../trace/types.js';
 
 export interface AuthContext {
   injections: Injection[];
@@ -23,6 +25,8 @@ export interface BuildResult {
   overrides: string[];
   /** Names of the credential destinations that were injected (no values). */
   injected: string[];
+  /** What was built, with the origin of every header, cookie and query pair. Produced in the same loop as `request`; credential values are never in it. */
+  observation: RequestObservation;
 }
 
 const enc = (s: string, allowReserved = false): string => {
@@ -31,6 +35,32 @@ const enc = (s: string, allowReserved = false): string => {
 };
 const isJsonMedia = (t: string): boolean => /^application\/(.+\+)?json\b/i.test(t) || /\+json\b/i.test(t) || /^application\/json/i.test(t);
 const baseMedia = (t: string): string => t.split(';')[0]!.trim().toLowerCase();
+
+/** Entity headers dropped when a redirect turns the request into a body-less GET. */
+export const ENTITY_HEADERS: Record<string, true> = {
+  'content-type': true,
+  'content-length': true,
+  'content-encoding': true,
+  'content-language': true,
+  'content-location': true,
+  'content-md5': true,
+  'content-range': true,
+  digest: true,
+  'transfer-encoding': true,
+};
+
+/** `name=value` as it appears in a URL query. The name is decoded for display; the value keeps the exact wire encoding. */
+function pairField(pair: string, source: FieldSource, limit: number): ObservedField {
+  const i = pair.indexOf('=');
+  const rawName = i < 0 ? pair : pair.slice(0, i);
+  let name = rawName;
+  try {
+    name = decodeURIComponent(rawName);
+  } catch {
+    /* keep the wire form */
+  }
+  return valuedField(name, source, i < 0 ? '' : pair.slice(i + 1), limit);
+}
 
 export function mediaTypeMatches(pattern: string, actual: string): boolean {
   const p = baseMedia(pattern);
@@ -245,13 +275,13 @@ function buildBody(
   input: RequestInput,
   cfg: AppConfig,
   notes: Notes,
-): { source: BodySource; contentType: string } | undefined {
+): { source: BodySource; contentType: string; observed: ObservedBody } | undefined {
   const b = input.body;
   if (b === undefined) return undefined;
   if ('json' in b) {
     const ct = pickMediaType(op, b.json.contentType, isJsonMedia, 'application/json');
     const buf = Buffer.from(JSON.stringify(b.json.value), 'utf8');
-    return { source: { length: buf.length, contentType: ct, open: () => buf }, contentType: ct };
+    return { source: { length: buf.length, contentType: ct, open: () => buf }, contentType: ct, observed: { contentType: ct, length: buf.length, backing: 'memory' } };
   }
   if ('form' in b) {
     const ct = pickMediaType(op, b.form.contentType, (t) => mediaTypeMatches(t, 'application/x-www-form-urlencoded'), 'application/x-www-form-urlencoded');
@@ -268,7 +298,7 @@ function buildBody(
       }
     }
     const buf = Buffer.from(pairs.join('&'), 'ascii');
-    return { source: { length: buf.length, contentType: ct, open: () => buf }, contentType: ct };
+    return { source: { length: buf.length, contentType: ct, open: () => buf }, contentType: ct, observed: { contentType: ct, length: buf.length, backing: 'memory' } };
   }
   if ('multipart' in b) {
     const m = b.multipart;
@@ -293,21 +323,35 @@ function buildBody(
         textPart(name, JSON.stringify(value), 'application/json');
       } else textPart(name, scalar(value));
     }
+    const fileMeta: NonNullable<ObservedBody['files']> = [];
     for (const f of (m.files ?? []) as UploadPart[]) {
       const info = guard.check(f.path);
       const filename = f.filename ?? path.basename(info.path);
+      fileMeta.push({ field: f.field, basename: path.basename(info.path), bytes: info.size });
       segs.push({ buf: head(f.field, `; filename="${quoteParam(filename)}"\r\nContent-Type: ${(f.contentType ?? 'application/octet-stream').replace(/[\r\n]/g, '')}\r\n\r\n`) });
       segs.push({ file: info });
       segs.push({ buf: Buffer.from('\r\n') });
     }
     segs.push({ buf: Buffer.from(`--${boundary}--\r\n`) });
     const contentType = `${baseMedia(ct0)}; boundary=${boundary}`;
-    return { source: segmentsSource(segs, contentType), contentType };
+    const source = segmentsSource(segs, contentType);
+    const observed: ObservedBody = {
+      contentType,
+      length: source.length,
+      backing: fileMeta.length ? 'file' : 'memory',
+      volatile: 'multipart_boundary',
+      ...(fileMeta.length ? { notStoredReason: 'file_backed' as const, files: fileMeta } : {}),
+    };
+    return { source, contentType, observed };
   }
   const bin = b.binary;
   const ct = pickMediaType(op, bin.contentType, () => false, bin.contentType);
   const info = new UploadGuard(cfg).check(bin.file);
-  return { source: { length: info.size, contentType: ct, open: () => fileStream(info) }, contentType: ct };
+  return {
+    source: { length: info.size, contentType: ct, open: () => fileStream(info) },
+    contentType: ct,
+    observed: { contentType: ct, length: info.size, backing: 'file', notStoredReason: 'file_backed', files: [{ field: 'body', basename: path.basename(info.path), bytes: info.size }] },
+  };
 }
 
 function withinPrefix(svc: ServiceConfig, rawPathAndQuery: string, url: URL): void {
@@ -333,32 +377,70 @@ export interface ComposedCookies {
   managedNames: Set<string>;
   injectedNames: string[];
   overriddenNames: string[];
+  /** One entry per cookie sent, in header order: managed ones without a value, request-supplied ones with it. */
+  observed: ObservedField[];
 }
 
 /** Cookie header value: managed jar < injected components < request-supplied cookies. */
-export function composeCookies(url: string, auth: AuthContext, inputCookies: Record<string, string> | undefined): ComposedCookies {
+export function composeCookies(url: string, auth: AuthContext, inputCookies: Record<string, string> | undefined, fieldLimit: number): ComposedCookies {
   const cookies = new Map<string, string>();
+  const observed = new Map<string, ObservedField>();
   const managedNames = new Set<string>();
   const injectedNames: string[] = [];
   const overriddenNames: string[] = [];
   for (const c of auth.cookiesFor?.(url) ?? []) {
     cookies.set(c.name, c.value);
+    observed.set(c.name, credentialField(c.name, 'jar', 'jar'));
     managedNames.add(c.name);
   }
   for (const inj of auth.injections.filter((i) => i.where === 'cookie')) {
     cookies.set(inj.name, inj.value);
+    observed.set(inj.name, credentialField(inj.name, 'credential', inj.binding ?? inj.name));
     managedNames.add(inj.name);
     injectedNames.push(inj.name);
   }
   for (const [n, v] of Object.entries(inputCookies ?? {})) {
     if (managedNames.has(n)) overriddenNames.push(n);
     cookies.set(n, String(v));
+    observed.set(n, valuedField(n, 'request', String(v), fieldLimit));
   }
-  return { header: cookies.size ? [...cookies].map(([n, v]) => `${n}=${v}`).join('; ') : undefined, managedNames, injectedNames, overriddenNames };
+  return { header: cookies.size ? [...cookies].map(([n, v]) => `${n}=${v}`).join('; ') : undefined, managedNames, injectedNames, overriddenNames, observed: [...observed.values()] };
+}
+
+/**
+ * Observation of a redirect hop. Headers keep their origin; entity headers go with a body-less GET; the query comes from
+ * `Location` (server data, `source: 'redirect'`); cookies are re-derived by the caller for the new URL when it manages them.
+ */
+export function observeRedirectHop(
+  prev: RequestObservation,
+  next: { url: string; method: string; dropEntityHeaders: boolean; cookies?: { fields: ObservedField[]; header?: string; managed: boolean } },
+  fieldLimit: number,
+): RequestObservation {
+  let headers = next.dropEntityHeaders ? prev.headers.filter((h) => !Object.hasOwn(ENTITY_HEADERS, h.name.toLowerCase())) : [...prev.headers];
+  let cookies = prev.cookies;
+  if (next.cookies) {
+    headers = headers.filter((h) => h.name.toLowerCase() !== 'cookie');
+    cookies = next.cookies.fields;
+    if (next.cookies.header)
+      headers.push(next.cookies.managed ? { name: 'cookie', source: 'jar', unrecordedReason: 'credential' } : valuedField('cookie', 'request', next.cookies.header, fieldLimit));
+  }
+  const search = new URL(next.url).search.slice(1);
+  const query = search ? search.split('&').filter(Boolean).map((p) => pairField(p, 'redirect', fieldLimit)) : [];
+  return {
+    method: next.method,
+    url: next.url,
+    headers,
+    cookies,
+    query,
+    ...(prev.headersTruncated ? { headersTruncated: true } : {}),
+    ...(next.dropEntityHeaders ? {} : prev.body ? { body: prev.body } : {}),
+    transportAdded: next.dropEntityHeaders ? prev.transportAdded.filter((n) => n !== 'content-length') : prev.transportAdded,
+  };
 }
 
 export function buildRequest(op: Operation, svc: ServiceConfig, cfg: AppConfig, input: RequestInput, auth: AuthContext): BuildResult {
   const notes = new Notes();
+  const limit = cfg.limits.traceFieldValueBytes;
   const inPath = input.path ?? {};
   const template = [...op.path.matchAll(/\{([^}/]+)\}/g)].map((m) => m[1]!);
   for (const key of Object.keys(inPath))
@@ -371,32 +453,46 @@ export function buildRequest(op: Operation, svc: ServiceConfig, cfg: AppConfig, 
     renderedPath = renderedPath.replace(`{${name}}`, () => pathSegment(name, inPath[name]!, def, op.dialect, notes));
   }
 
-  // --- query
+  // --- query: the sent pairs, the observed fields and the observed URL parts are appended together
   const query: string[] = [];
+  const queryUrl: string[] = [];
+  const queryObs: ObservedField[] = [];
   const queryNames = new Set<string>();
   const injectedNames: string[] = [];
   const overrides: string[] = [];
+  const addQuery = (pairs: string[]): void => {
+    for (const p of pairs) {
+      query.push(p);
+      queryUrl.push(p);
+      queryObs.push(pairField(p, 'request', limit));
+    }
+  };
   const inQuery = input.query ?? {};
   const declaredQuery = op.parameters.filter((p) => p.in === 'query');
   for (const p of declaredQuery) {
     if (Object.prototype.hasOwnProperty.call(inQuery, p.name)) {
-      query.push(...queryPairs(p.name, inQuery[p.name]!, styleOf(p, op.dialect), true, notes, `/query/${p.name}`));
+      addQuery(queryPairs(p.name, inQuery[p.name]!, styleOf(p, op.dialect), true, notes, `/query/${p.name}`));
       queryNames.add(p.name);
     }
   }
   for (const [name, value] of Object.entries(inQuery)) {
     if (queryNames.has(name)) continue;
-    query.push(...queryPairs(name, value, styleOf(undefined, op.dialect), false, notes, `/query/${name}`));
+    addQuery(queryPairs(name, value, styleOf(undefined, op.dialect), false, notes, `/query/${name}`));
     queryNames.add(name);
   }
   for (const inj of auth.injections.filter((i) => i.where === 'query')) {
     injectedNames.push(`query:${inj.name}`);
     if (queryNames.has(inj.name)) overrides.push(`query:${inj.name}`);
-    else query.push(`${enc(inj.name)}=${enc(inj.value)}`);
+    else {
+      query.push(`${enc(inj.name)}=${enc(inj.value)}`);
+      queryUrl.push(`${enc(inj.name)}=%3Ccredential%3E`);
+      queryObs.push(credentialField(inj.name, 'credential', inj.binding ?? inj.name));
+    }
   }
 
   const pathAndQuery = renderedPath + (query.length ? `?${query.join('&')}` : '');
   const full = svc.baseUrl + pathAndQuery;
+  const observedUrl = svc.baseUrl + renderedPath + (queryUrl.length ? `?${queryUrl.join('&')}` : '');
   let parsed: URL;
   try {
     parsed = new URL(full);
@@ -405,32 +501,38 @@ export function buildRequest(op: Operation, svc: ServiceConfig, cfg: AppConfig, 
   }
   withinPrefix(svc, svc.basePath + pathAndQuery, parsed);
 
-  // --- headers
+  // --- headers (each one is stored together with where it came from)
   const headers = new Map<string, [string, string]>();
-  const setHeader = (n: string, v: string) => headers.set(n.toLowerCase(), [n, v]);
+  const headerObs = new Map<string, ObservedField>();
+  const setHeader = (n: string, v: string, field: ObservedField): void => {
+    headers.set(n.toLowerCase(), [n, v]);
+    headerObs.set(n.toLowerCase(), field);
+  };
   for (const [n, v] of Object.entries(input.headers ?? {})) {
     assertHeaderSafe(n, String(v));
-    setHeader(n, String(v));
+    setHeader(n, String(v), valuedField(n, 'request', String(v), limit));
   }
   const userHeaderNames = new Set(headers.keys());
   for (const inj of auth.injections.filter((i) => i.where === 'header')) {
     injectedNames.push(`header:${inj.name}`);
     if (userHeaderNames.has(inj.name)) overrides.push(`header:${inj.name}`);
-    else setHeader(inj.name, inj.value);
+    else setHeader(inj.name, inj.value, credentialField(inj.name, 'credential', inj.binding ?? inj.name));
   }
 
   // --- cookies (jar < injected < request-supplied; explicit Cookie header replaces all)
-  const jarCookies = composeCookies(full, auth, input.cookies);
+  const jarCookies = composeCookies(full, auth, input.cookies, limit);
   for (const n of jarCookies.injectedNames) injectedNames.push(`cookie:${n}`);
   if (userHeaderNames.has('cookie') && jarCookies.managedNames.size) overrides.push('header:cookie');
   for (const n of jarCookies.overriddenNames) overrides.push(`cookie:${n}`);
-  if (!userHeaderNames.has('cookie') && jarCookies.header) setHeader('cookie', jarCookies.header);
+  const cookieHeaderSent = !userHeaderNames.has('cookie') && jarCookies.header !== undefined;
+  if (cookieHeaderSent)
+    setHeader('cookie', jarCookies.header!, jarCookies.managedNames.size ? { name: 'cookie', source: 'jar', unrecordedReason: 'credential' } : valuedField('cookie', 'request', jarCookies.header!, limit));
 
   // --- body
   const body = buildBody(op, input, cfg, notes);
-  if (body && !headers.has('content-type')) setHeader('content-type', body.contentType);
-  if (!headers.has('accept-encoding')) setHeader('accept-encoding', 'gzip, deflate, br');
-  if (!headers.has('user-agent')) setHeader('user-agent', 'openapi-swagger-mcp');
+  if (body && !headers.has('content-type')) setHeader('content-type', body.contentType, valuedField('content-type', 'transport', body.contentType, limit));
+  if (!headers.has('accept-encoding')) setHeader('accept-encoding', 'gzip, deflate, br', valuedField('accept-encoding', 'transport', 'gzip, deflate, br', limit));
+  if (!headers.has('user-agent')) setHeader('user-agent', 'openapi-swagger-mcp', valuedField('user-agent', 'transport', 'openapi-swagger-mcp', limit));
 
   const out: Array<[string, string]> = [...headers.values()];
   for (const [n, v] of out) assertHeaderSafe(n, v);
@@ -439,5 +541,14 @@ export function buildRequest(op: Operation, svc: ServiceConfig, cfg: AppConfig, 
     issues: notes.issues,
     overrides: [...new Set(overrides)],
     injected: [...new Set(injectedNames)],
+    observation: {
+      method: op.method,
+      url: observedUrl,
+      headers: [...headerObs.values()],
+      cookies: cookieHeaderSent ? jarCookies.observed : [],
+      query: queryObs,
+      ...(body ? { body: body.observed } : {}),
+      transportAdded: body ? ['host', 'connection', 'content-length'] : ['host', 'connection'],
+    },
   };
 }

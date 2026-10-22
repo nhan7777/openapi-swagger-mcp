@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Request inspector</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="bar">
+  <h1>Request inspector</h1>
+  <span class="badge" id="readonly">read-only</span>
+  <span id="trace-session" class="muted"></span>
+  <div class="spacer"></div>
+  <div role="group" aria-label="List mode">
+    <button type="button" id="mode-calls" aria-pressed="true">Calls</button>
+    <button type="button" id="mode-exchanges" aria-pressed="false">Exchanges</button>
+  </div>
+</header>
+<div id="banner" class="banner" hidden></div>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<div class="layout">
+  <nav aria-label="Timeline">
+    <form id="filters" class="filters"></form>
+    <ul id="list" class="list"></ul>
+    <div class="more">
+      <button type="button" id="more" hidden>Load more</button>
+      <button type="button" id="fresh" hidden>New activity: reload</button>
+    </div>
+  </nav>
+  <main id="detail" aria-live="polite">
+    <p class="muted">Select a call or an exchange.</p>
+  </main>
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

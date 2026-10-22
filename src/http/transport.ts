@@ -4,6 +4,8 @@ import zlib from 'node:zlib';
 import { Readable } from 'node:stream';
 import { Agent, request, type Dispatcher } from 'undici';
 import type { AppConfig } from '../config.js';
+import type { NetworkPolicy } from '../policy/network.js';
+import type { ExchangePurpose, ExchangeScope } from '../trace/types.js';
 import { log } from '../log.js';
 import { ToolError } from '../types.js';
 import { Semaphore, sanitizeMessage } from '../util.js';
@@ -133,7 +135,10 @@ export class Transport {
   private normalLane: Semaphore;
   private recipeLane: Semaphore;
 
-  constructor(private readonly cfg: AppConfig) {
+  constructor(
+    private readonly cfg: AppConfig,
+    private readonly policy: NetworkPolicy,
+  ) {
     this.normalLane = new Semaphore(cfg.limits.maxConcurrentRequests);
     this.recipeLane = new Semaphore(cfg.limits.recipeConcurrency);
   }
@@ -162,12 +167,22 @@ export class Transport {
     return d;
   }
 
-  /** One HTTP exchange; redirects are never followed here. */
+  /**
+   * One HTTP exchange; redirects are never followed here. The destination is checked against the network policy before
+   * a lane is taken or a connection is opened. `serviceId` is the DESTINATION service (for a recipe: its own service).
+   * When an exchange scope is given it is told about dispatch and response; the caller ends it.
+   */
   async send(
     serviceId: string,
     req: PreparedRequest,
-    opts: { signal?: AbortSignal; lane?: 'normal' | 'recipe' } = {},
+    opts: { signal?: AbortSignal; lane?: 'normal' | 'recipe'; purpose: ExchangePurpose; exchange?: ExchangeScope },
   ): Promise<RawResponse> {
+    try {
+      this.policy.assert(serviceId, opts.purpose, req.url);
+    } catch (e) {
+      opts.exchange?.end({ outcome: 'blocked', sendState: 'not_sent', errorCode: e instanceof ToolError ? e.code : 'NETWORK_POLICY_BLOCKED' });
+      throw e;
+    }
     const dispatcher = this.dispatcher(serviceId);
     for (const [n, v] of req.headers) assertHeaderSafe(n, v);
     const lane = opts.lane === 'recipe' ? this.recipeLane : this.normalLane;
@@ -175,12 +190,13 @@ export class Transport {
     let reqBody: Buffer | Readable | undefined;
     const headers: string[] = [];
     for (const [n, v] of req.headers) headers.push(n, v);
-    if (req.body) {
-      reqBody = req.body.open();
-      headers.push('content-length', String(req.body.length));
-    }
     let res: Dispatcher.ResponseData;
     try {
+      if (req.body) {
+        reqBody = req.body.open();
+        headers.push('content-length', String(req.body.length));
+      }
+      opts.exchange?.dispatched();
       res = await request(req.url, {
         method: req.method as Dispatcher.HttpMethod,
         headers,
@@ -198,14 +214,19 @@ export class Transport {
       release();
       if (reqBody instanceof Readable) reqBody.destroy();
     });
-    return { status: res.statusCode, headers: res.headers as Record<string, string | string[]>, body: stream, decodedEncodings: decoded };
+    const rawHeaders = res.headers as Record<string, string | string[]>;
+    opts.exchange?.response({ status: res.statusCode, headers: rawHeaders, decodedEncodings: decoded });
+    return { status: res.statusCode, headers: rawHeaders, body: stream, decodedEncodings: decoded };
   }
 
-  /** GET a spec document: no redirects, bounded bytes, no retries. */
+  /**
+   * GET a spec document: no redirects, bounded bytes, no retries. `purpose` is 'spec_root' or 'spec_ref'. A given
+   * exchange scope is ended here on every path; the document body is not stored (the snapshot keeps the sources).
+   */
   async fetchBounded(
     serviceId: string,
     url: string,
-    o: { headers?: Array<[string, string]>; maxBytes: number; signal?: AbortSignal },
+    o: { headers?: Array<[string, string]>; maxBytes: number; signal?: AbortSignal; purpose: 'spec_root' | 'spec_ref'; exchange?: ExchangeScope },
   ): Promise<Buffer> {
     const timeout = o.signal ? undefined : timeoutSignal(this.cfg.limits.requestTimeoutMs);
     const signal = o.signal ?? timeout!.signal;
@@ -215,16 +236,22 @@ export class Transport {
       res = await this.send(
         serviceId,
         { method: 'GET', url, headers: [['accept', 'application/json, application/yaml, text/yaml, */*;q=0.5'], ['accept-encoding', 'gzip, deflate, br'], ...(o.headers ?? [])] },
-        { signal, lane: 'recipe' },
+        { signal, lane: 'recipe', purpose: o.purpose, exchange: o.exchange },
       );
     } catch (e) {
       timeout?.dispose();
       const info = classifyNetworkError(e, signal);
+      if (e instanceof ToolError && e.code === 'NETWORK_POLICY_BLOCKED') {
+        o.exchange?.end({ outcome: 'blocked', sendState: 'not_sent', errorCode: e.code });
+        throw new ToolError('SPEC_FETCH_FAILED', `cannot fetch ${safeUrl}: ${e.code}: ${e.message}`);
+      }
+      o.exchange?.end({ outcome: 'network_error', sendState: info.mayHaveBeenSent ? 'maybe_sent' : 'not_sent', errorCode: info.code });
       throw new ToolError('SPEC_FETCH_FAILED', `cannot fetch ${safeUrl}: ${info.code}: ${info.message}`);
     }
     if (res.status >= 300 && res.status < 400) {
       timeout?.dispose();
       discard(res.body);
+      o.exchange?.end({ outcome: 'response', sendState: 'response_received', bodyDiscarded: 'redirect' });
       const loc = res.headers['location'];
       let target = '';
       try {
@@ -238,11 +265,15 @@ export class Transport {
     if (res.status < 200 || res.status >= 300) {
       timeout?.dispose();
       discard(res.body);
+      o.exchange?.end({ outcome: 'response', sendState: 'response_received' });
       throw new ToolError('SPEC_FETCH_FAILED', `${safeUrl} answered HTTP ${res.status}`);
     }
     try {
-      return await collect(res.body, o.maxBytes);
+      const buf = await collect(res.body, o.maxBytes);
+      o.exchange?.end({ outcome: 'response', sendState: 'response_received' });
+      return buf;
     } catch (e) {
+      o.exchange?.end({ outcome: 'response', sendState: 'response_received', bodyIncompleteReason: e instanceof ToolError ? `exceeds ${o.maxBytes} bytes` : 'body read failed' });
       if (e instanceof ToolError) throw new ToolError('SPEC_LIMIT_EXCEEDED', `${safeUrl} exceeds ${o.maxBytes} bytes`);
       throw new ToolError('SPEC_FETCH_FAILED', `${safeUrl}: body read failed`);
     } finally {

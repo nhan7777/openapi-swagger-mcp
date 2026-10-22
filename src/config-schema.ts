@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SearchSchema } from './search/config.js';
 
 // Public configuration schema. Structural rules (source exclusivity, auth alternatives, recipe shapes) are encoded
 // as unions so the emitted JSON Schema rejects the same documents as the loader. Cross-references (does this
@@ -25,6 +26,19 @@ export const LimitsSchema = z
     toolOutputBytes: posInt(32768, 4 * MiB),
     artifactPageBytes: posInt(16384, 1 * MiB),
     maxRedirects: posInt(5, 20),
+    /** Hard disk budget of one session's trace segments. Must be at least 4 × traceSegmentBytes. */
+    traceBytes: posInt(64 * MiB, 4096 * MiB),
+    traceSegmentBytes: posInt(4 * MiB, 256 * MiB),
+    /** Largest single trace event; must be at most traceSegmentBytes / 2. */
+    traceEventBytes: posInt(65536, 4 * MiB),
+    /** Hard (conservative) budget of the in-memory trace index. */
+    traceIndexBytes: posInt(32 * MiB, 1024 * MiB),
+    traceQueueBytes: posInt(4 * MiB, 256 * MiB),
+    traceMaxOpenRecords: posInt(256, 10000),
+    traceInputInlineBytes: posInt(4096, 1 * MiB),
+    traceFieldValueBytes: posInt(4096, 1 * MiB),
+    requestBodyTraceBytes: posInt(1 * MiB, 64 * MiB),
+    maxArtifacts: posInt(20000, 1000000),
   })
   .strict()
   .prefault({});
@@ -180,6 +194,24 @@ export type OwnerExtras = z.infer<typeof OwnerExtras>;
 
 const NamedProfile = z.object({ auth: AuthMethods, ...OwnerExtras.shape }).strict();
 
+// ---- policies ------------------------------------------------------------------------------
+
+/** One operation selector; every given key must match. `path` is a case-sensitive glob: `*` one segment, `**` any. */
+export const OperationRuleSchema = z
+  .object({
+    method: z.enum(['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH', 'TRACE', 'get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']).optional(),
+    path: z.string().min(1).regex(/^\//, 'must start with "/"').optional(),
+    operationId: nonEmpty.optional(),
+    tag: nonEmpty.optional(),
+  })
+  .strict()
+  .refine((r) => Object.keys(r).length > 0, 'give at least one of method, path, operationId, tag')
+  .meta({ minProperties: 1 });
+export type OperationRule = z.infer<typeof OperationRuleSchema>;
+
+/** Exact http(s) origin: no wildcard, userinfo, path (other than "/"), query or fragment. */
+export const OriginSchema = z.string().regex(/^https?:\/\/[^/?#@\s*]+\/?$/, 'must be an exact http(s) origin such as https://host:8443');
+
 const SpecObject = z
   .object({
     source: z.union([z.object({ url: nonEmpty }).strict(), z.object({ file: nonEmpty }).strict()]),
@@ -194,6 +226,11 @@ const ServiceBase = {
   /** A URL or a file path, or the object form for refs/roots/spec-fetch auth. */
   spec: z.union([nonEmpty, SpecObject]),
   tls: z.object({ caFile: z.string().optional(), verify: z.boolean().optional() }).strict().optional(),
+  /** Agent-facing operation filter; exclude wins over include. Configured auth recipes are not filtered. */
+  operations: z
+    .object({ include: z.array(OperationRuleSchema).min(1).optional(), exclude: z.array(OperationRuleSchema).default([]) })
+    .strict()
+    .optional(),
 };
 
 /** A service that carries its own auth, recipes and initial credentials. */
@@ -212,6 +249,23 @@ const Service = z.union([
     .strict(),
 ]);
 
+/** Optional local request inspector: read-only, loopback only, off by default. */
+export const InspectorSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    /** Loopback only: `0.0.0.0` and `::` are not accepted. */
+    host: z.enum(['127.0.0.1', '::1']).default('127.0.0.1'),
+    /** 0 picks a free port. */
+    port: z.number().int().min(0).max(65535).default(0),
+    /** Largest raw/text page. Capped at `limits.artifactPageBytes` at run time. */
+    pageBytes: posInt(16384, 1 * MiB),
+    /** Largest JSON body the formatted view will pretty-print. */
+    formatMaxBytes: posInt(1 * MiB, 16 * MiB),
+    timelineLimit: posInt(200, 200),
+  })
+  .strict()
+  .prefault({});
+
 export const ConfigSchema = z
   .object({
     $schema: z.string().optional(),
@@ -225,6 +279,16 @@ export const ConfigSchema = z
         uploadRoots: z.array(z.string()).default([]),
         exportRoots: z.array(z.string()).default([]),
         artifactRoot: z.string().optional(),
+        retention: z
+          .object({
+            /** Keep the session directory (trace, artifacts, metadata) after a normal shutdown. */
+            keepOnExit: z.boolean().default(false),
+            /** 0: leftovers of a crashed process are removed at the next start (previous behaviour). */
+            crashedSessionMaxAgeHours: z.number().int().min(0).max(24 * 365).default(0),
+            maxRetainedBytes: posInt(1024 * MiB, 1024 * 1024 * MiB),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),
@@ -243,6 +307,13 @@ export const ConfigSchema = z
       )
       .default([]),
     limits: LimitsSchema,
+    /** Outbound destinations. Absent: only the destinations derived from `services` are reachable. */
+    network: z.object({ allow: z.array(OriginSchema).min(1) }).strict().optional(),
+    trace: z.object({ enabled: z.boolean().default(true) }).strict().prefault({}),
+    /** Local request inspector (off unless `enabled: true`). */
+    inspector: InspectorSchema,
+    /** Search aliases and index limits. */
+    search: SearchSchema,
   })
   .strict();
 

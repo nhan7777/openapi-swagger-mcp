@@ -1,35 +1,11 @@
+// Frozen copy of src/specs/search.ts at commit 7ff7326 (release 0.1.2), types removed, nothing else changed. It is the
+// "current behaviour" baseline the benchmark compares against. Do not edit: a different baseline needs a new file.
 import { createHash } from 'node:crypto';
-import { ToolError } from '../types.js';
-import type { Snapshot } from './loader.js';
-import type { Operation } from './model.js';
-import type { SpecRegistry } from './registry.js';
 
-export interface SearchQuery {
-  query: string;
-  service?: string;
-  method?: string;
-  tag?: string;
-  includeDeprecated?: boolean;
-  limit?: number;
-  cursor?: string;
-}
-export interface SearchHit {
-  service: string;
-  operation: string;
-  method: string;
-  path: string;
-  operationId?: string;
-  summary?: string;
-  tags: string[];
-  deprecated: boolean;
-  revision: string;
-  score: number;
-}
-
-const tokenize = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const tokenize = (s) => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 const MAX_LIMIT = 50;
 
-function score(op: Operation, q: string, tokens: string[]): number {
+function score(op, q, tokens) {
   const ql = q.trim().toLowerCase();
   let s = 0;
   const key = op.key.toLowerCase();
@@ -46,14 +22,14 @@ function score(op: Operation, q: string, tokens: string[]): number {
   return s;
 }
 
-function queryHash(q: SearchQuery, revisions: string): string {
+function queryHash(q, revisions) {
   return createHash('sha256')
     .update(JSON.stringify([q.query, q.service ?? null, q.method?.toUpperCase() ?? null, q.tag ?? null, q.includeDeprecated === true, revisions]))
     .digest('hex')
     .slice(0, 16);
 }
 
-export function searchOperations(registry: SpecRegistry, snapshots: Snapshot[], q: SearchQuery): { results: SearchHit[]; nextCursor?: string; total: number } {
+export function searchOperations(_registry, snapshots, q) {
   const limit = Math.min(Math.max(q.limit ?? 10, 1), MAX_LIMIT);
   const tokens = tokenize(q.query);
   const revisions = snapshots.map((s) => `${s.serviceId}@${s.revision}`).sort().join(',');
@@ -61,19 +37,19 @@ export function searchOperations(registry: SpecRegistry, snapshots: Snapshot[], 
   let offset = 0;
   if (q.cursor) {
     try {
-      const c = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8')) as { h: string; o: number };
+      const c = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8'));
       if (c.h !== qh) throw new Error('stale');
       offset = c.o;
     } catch {
-      throw new ToolError('CURSOR_INVALID', 'cursor is stale or does not belong to this query; repeat the search without a cursor');
+      throw new Error('CURSOR_INVALID');
     }
   }
-  const hits: SearchHit[] = [];
+  const hits = [];
   const matchAll = tokens.length === 0;
   for (const snap of snapshots) {
     for (const op of snap.operations.values()) {
       if (q.method && op.method !== q.method.toUpperCase()) continue;
-      if (q.tag && !op.tags.some((t) => t.toLowerCase() === q.tag!.toLowerCase())) continue;
+      if (q.tag && !op.tags.some((t) => t.toLowerCase() === q.tag.toLowerCase())) continue;
       if (!q.includeDeprecated && op.deprecated) continue;
       const sc = matchAll ? 1 : score(op, q.query, tokens);
       if (sc <= 0) continue;
@@ -83,6 +59,5 @@ export function searchOperations(registry: SpecRegistry, snapshots: Snapshot[], 
   hits.sort((a, b) => b.score - a.score || (a.service < b.service ? -1 : a.service > b.service ? 1 : a.operation < b.operation ? -1 : a.operation > b.operation ? 1 : 0));
   const page = hits.slice(offset, offset + limit);
   const next = offset + limit < hits.length ? Buffer.from(JSON.stringify({ h: qh, o: offset + limit })).toString('base64url') : undefined;
-  void registry;
   return { results: page, nextCursor: next, total: hits.length };
 }

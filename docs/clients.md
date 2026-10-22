@@ -62,7 +62,7 @@ This server sends real POST, PUT, PATCH and DELETE requests, with no rollback an
 
 - Cline or Kiro `autoApprove` (any tool name, or `"*"` in Kiro).
 - Codex `default_tools_approval_mode = "approve"` or a per-tool `approval_mode = "approve"`.
-- A "run everything", "always allow" or "trust this tool" choice in a client prompt, for any of the ten tools.
+- A "run everything", "always allow" or "trust this tool" choice in a client prompt, for any of the eleven tools. `preview_operation` is read-only and sends nothing, but the rest of the tools are not.
 - VS Code `sandboxEnabled` for this server. The VS Code docs state that with sandboxing on, tool confirmations are auto-approved.
 
 A client-side prompt is the client's feature. This server does not enforce it.

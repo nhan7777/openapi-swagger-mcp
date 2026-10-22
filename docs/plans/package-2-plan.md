@@ -1,5 +1,6 @@
 # Gói 2 — Search chính xác cho API thực tế: Implementation Plan
 
+**Trạng thái hiện tại:** lexical-only Unicode/field-aware search, rank params v4. Nhánh semantic/model đã bị rút và gỡ theo yêu cầu người dùng; plan hybrid được giữ chỉ làm lịch sử. Không model/native inference/embedding/fusion runtime được ship. P1 foundation và các cải tiến lexical/policy/cursor/output bounds được giữ; P3/P4 vẫn cần tích hợp theo thứ tự coordinator.
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Thay search ASCII hiện tại bằng search lexical Unicode, field-aware, có reverse lookup qua schema/response field, ranking giải thích được, index bị chặn tài nguyên, cursor an toàn theo revision và benchmark tái lập được.

@@ -1,25 +1,24 @@
 import type { CookieJar } from 'tough-cookie';
 import { applySetCookies, cloneJar, cookiesFor } from './auth/cookies.js';
-import type { Injection } from './auth/credentials.js';
-import type { ProfileManager, ProfileRuntime } from './auth/profiles.js';
 import type { AuthRecoveryInfo, RecoveryCoordinator } from './auth/recovery.js';
-import type { CaptureOutcome, SessionManager, SessionRuntime } from './auth/sessions.js';
+import type { CaptureOutcome, SessionManager } from './auth/sessions.js';
 import type { ArtifactMeta, ArtifactStore } from './artifacts/store.js';
 import { makeSchemaLookup, renderJsonView, renderOpaqueView, type Omission, type ViewResult } from './artifacts/view.js';
-import type { AppConfig, AuthTarget, ServiceConfig } from './config.js';
-import { Diagnostician, findResponseDef, findResponseMedia, headerText, type ResponseView } from './http/diagnostics.js';
-import { composeCookies, buildRequest, type AuthContext } from './http/serialize.js';
+import type { AppConfig, AuthTarget } from './config.js';
+import { findResponseDef, findResponseMedia, headerText, type ResponseView } from './http/diagnostics.js';
+import { assertUrlWithinService, composeCookies, ENTITY_HEADERS, observeRedirectHop, type AuthContext } from './http/serialize.js';
 import { classifyNetworkError, discard, timeoutSignal, type PreparedRequest, type RawResponse, type Transport } from './http/transport.js';
 import { log } from './log.js';
+import { boundHeaders } from './trace/observe.js';
+import type { CallId, CallScope, ExchangeScope, ObservedField, ObservedInput, RequestId, RequestObservation, TraceRecorder } from './trace/types.js';
+import { prepareRequest, type Blocker, type PrepareDeps, type PreparedInvocation, type Target } from './request-prep.js';
 import type { AuthSelector, CaptureSpec } from './schemas.js';
 import type { Snapshot } from './specs/loader.js';
-import type { SpecRegistry } from './specs/registry.js';
 import type { Operation } from './specs/model.js';
 import { ToolError, type Diagnostics, type Json, type RequestInput } from './types.js';
 import { errorInfo, utf8Len } from './util.js';
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const ENTITY_HEADERS = new Set(['content-type', 'content-length', 'content-encoding', 'content-language', 'content-location', 'content-md5', 'content-range', 'digest', 'transfer-encoding']);
 const MAX_PARSE_BYTES = 64 * 1024 * 1024;
 const MAX_HEADER_BYTES = 8192;
 const NOT_AVAILABLE: Diagnostics = { state: 'not_available', issues: [] };
@@ -46,6 +45,8 @@ export interface InvokeResult {
   service: string;
   operation: string;
   specRevision: string;
+  /** Where the request goes (configured service and baseUrl). Absent when the service id is unknown. */
+  target?: Target;
   /** False only when no request bytes can have left the process. */
   sent: boolean;
   http?: { status: number; headers: Record<string, string | string[]>; headersTruncated?: boolean; redirects: RedirectHop[] };
@@ -63,17 +64,9 @@ export interface InvokeResult {
   authRecovery?: AuthRecoveryInfo;
   capture?: CaptureOutcome;
   notes?: string[];
-  error?: { code: string; message: string; mayHaveBeenSent?: boolean };
-}
-
-interface ResolvedAuth {
-  mode: 'profile' | 'session' | 'anonymous';
-  profile?: ProfileRuntime;
-  session?: SessionRuntime;
-  injections: Injection[];
-  jar?: CookieJar;
-  requestRevision: number;
-  generation: number;
+  error?: { code: string; message: string; mayHaveBeenSent?: boolean; details?: Record<string, Json> };
+  /** Present when the call is traced: the call and every HTTP exchange this invocation made (first 50). */
+  trace?: { callId: CallId; requestIds: RequestId[] };
 }
 
 const redact = (u: string): string => {
@@ -85,109 +78,94 @@ const redact = (u: string): string => {
   }
 };
 
-function boundHeaders(h: Record<string, string | string[]>): { headers: Record<string, string | string[]>; truncated: boolean } {
-  const out: Record<string, string | string[]> = {};
-  let used = 0;
-  for (const [k, v] of Object.entries(h)) {
-    const cost = utf8Len(JSON.stringify([k, v]));
-    if (used + cost > MAX_HEADER_BYTES) return { headers: out, truncated: true };
-    used += cost;
-    out[k] = v;
-  }
-  return { headers: out, truncated: false };
-}
+const mediaKind = (contentType: string): 'json' | 'text' | 'binary' =>
+  /json/i.test(contentType) ? 'json' : /^multipart\//i.test(contentType) ? 'binary' : 'text';
 
 export class Invoker {
-  private readonly diag = new Diagnostician();
-
   constructor(
     private readonly cfg: AppConfig,
-    private readonly registry: SpecRegistry,
+    private readonly prep: PrepareDeps,
     private readonly transport: Transport,
-    private readonly profiles: ProfileManager,
     private readonly sessions: SessionManager,
     private readonly recovery: RecoveryCoordinator,
     private readonly artifacts: ArtifactStore,
     private readonly shutdown: AbortSignal,
+    private readonly trace: TraceRecorder,
   ) {}
 
-  private resolveAuth(svc: ServiceConfig, sel: AuthSelector | undefined): ResolvedAuth {
-    let mode: AuthSelector | { mode: 'owner'; key: string } = sel ?? { mode: 'default' as const };
-    if (mode.mode === 'default') mode = svc.defaultOwner ? { mode: 'owner', key: svc.defaultOwner } : { mode: 'anonymous' };
-    if (mode.mode === 'anonymous') return { mode: 'anonymous', injections: [], requestRevision: 0, generation: 0 };
-    if (mode.mode === 'session') {
-      const s = this.sessions.get(mode.sessionId);
-      if (s.serviceId !== svc.id) throw new ToolError('SESSION_SERVICE_MISMATCH', `session ${s.id} is bound to service ${s.serviceId}, not ${svc.id}`);
-      return { mode: 'session', session: s, injections: s.injections(), jar: s.jar, requestRevision: 0, generation: 0 };
+  /** The agent's input as the first business hop received it: inline when small, one artifact when larger. Never reads the credential store. */
+  private async observeInput(input: RequestInput): Promise<ObservedInput> {
+    const lim = this.cfg.limits;
+    const text = JSON.stringify(input);
+    const size = Buffer.byteLength(text, 'utf8');
+    if (size <= lim.traceInputInlineBytes) return { json: input as unknown as Json };
+    if (size > lim.requestBodyTraceBytes) return { notStoredReason: 'over_limit' };
+    try {
+      const meta = await this.artifacts.putBuffer(Buffer.from(text, 'utf8'), 'application/json', 'json', 'input');
+      return { artifact: this.artifacts.describe(meta.id) };
+    } catch {
+      return { notStoredReason: 'quota' };
     }
-    let key: string;
-    if (mode.mode === 'profile') {
-      if (!svc.allowedProfiles.includes(mode.profileId))
-        throw new ToolError('PROFILE_NOT_ALLOWED', `profile ${mode.profileId} is not allowed for service ${svc.id}`);
-      key = `profile:${mode.profileId}`;
-    } else key = mode.key;
-    const p = this.profiles.get(key);
-    const label = 'profile' in p.cfg.target ? `profile ${p.cfg.target.profile}` : `service ${p.cfg.target.service} auth`;
-    if (p.recovering) throw new ToolError('AUTH_RECOVERING', `${label} is running ${p.activeAction}; retry shortly (get_auth_status shows progress)`);
-    const missing = p.missingBindings();
-    if (missing.length > 0)
-      throw new ToolError('AUTH_REQUIRED', `${label} cannot send: ${missing.join(', ')}; call authenticate or import a session`);
-    return { mode: 'profile', profile: p, injections: p.injections(), jar: p.cfg.auth.cookies ? p.jar : undefined, requestRevision: p.revision, generation: p.generation };
   }
 
-  async invoke(args: InvokeArgs): Promise<InvokeResult> {
+  /** Attach the request body to the observation: one artifact for memory-backed bodies within the limit. */
+  private async withBodyArtifact(obs: RequestObservation, request: PreparedRequest): Promise<RequestObservation> {
+    const body = obs.body;
+    if (!body || body.backing !== 'memory' || !request.body) return obs;
+    if (body.length > this.cfg.limits.requestBodyTraceBytes) return { ...obs, body: { ...body, notStoredReason: 'over_limit' } };
+    const data = request.body.open();
+    if (!Buffer.isBuffer(data)) return { ...obs, body: { ...body, notStoredReason: 'quota' } };
+    try {
+      const meta = await this.artifacts.putBuffer(data, body.contentType, mediaKind(body.contentType), 'request_body');
+      return { ...obs, body: { ...body, artifact: this.artifacts.describe(meta.id) } };
+    } catch {
+      return { ...obs, body: { ...body, notStoredReason: 'quota' } };
+    }
+  }
+
+  async invoke(args: InvokeArgs, call?: CallScope): Promise<InvokeResult> {
     const started = Date.now();
     const base: InvokeResult = {
       service: args.service,
       operation: args.operation,
       specRevision: args.revision,
+      ...(this.cfg.services.get(args.service) ? { target: { service: args.service, baseUrl: this.cfg.services.get(args.service)!.baseUrl } } : {}),
       sent: false,
       diagnostics: { request: NOT_AVAILABLE, response: NOT_AVAILABLE },
       timingMs: 0,
     };
+    const requestIds: RequestId[] = [];
+    const withTrace = <T extends InvokeResult>(r: T): T => (call ? { ...r, trace: { callId: call.callId, requestIds: requestIds.slice(0, 50) } } : r);
     const fail = (e: unknown, extra: Partial<InvokeResult> = {}): InvokeResult => {
       const info = errorInfo(e);
-      return { ...base, ...extra, error: { code: info.code, message: info.message }, timingMs: Date.now() - started };
+      const details = e instanceof ToolError ? e.details : undefined;
+      return withTrace({ ...base, ...extra, error: { code: info.code, message: info.message, ...(details ? { details: details as Record<string, Json> } : {}) }, timingMs: Date.now() - started });
     };
+    const blocked = (b: Blocker, requestDiagnostics?: Diagnostics): InvokeResult =>
+      withTrace({
+        ...base,
+        diagnostics: { request: requestDiagnostics ?? NOT_AVAILABLE, response: NOT_AVAILABLE },
+        error: { code: b.code, message: b.message, ...(b.details ? { details: b.details } : {}) },
+        timingMs: Date.now() - started,
+      });
 
-    let svc: ServiceConfig | undefined;
-    let snapshot: Snapshot;
-    let op: Operation;
-    let auth: ResolvedAuth;
-    try {
-      svc = this.cfg.services.get(args.service);
-      if (!svc) throw new ToolError('SERVICE_UNKNOWN', `unknown service ${args.service}`);
-      ({ snapshot, operation: op } = this.registry.getOperation(args.service, args.operation, args.revision));
-      auth = this.resolveAuth(svc, args.auth);
-    } catch (e) {
-      return fail(e);
+    call?.setTarget({ service: args.service, operation: args.operation, revision: args.revision });
+    const outcome = prepareRequest(this.prep, args);
+    if (!outcome.ok) {
+      const b = outcome.blockers[0];
+      if (b.code === 'OPERATION_NOT_ALLOWED')
+        this.trace.policyBlocked({ ...(call ? { callId: call.callId } : {}), service: args.service, operation: args.operation, rule: String(b.details?.rule ?? 'unknown') });
+      return blocked(b, outcome.requestDiagnostics);
     }
-
+    const p: PreparedInvocation = outcome.prepared;
+    const { service: svc, snapshot, operation: op, built, requestDiagnostics: requestDiag, authInfo, overridden, auth } = p;
     const input = args.input ?? {};
+    const limit = this.cfg.limits.traceFieldValueBytes;
+
     let workJar: CookieJar | undefined = auth.jar;
     const authCtx: AuthContext = { injections: auth.injections, cookiesFor: (u) => (workJar ? cookiesFor(workJar, u) : []) };
-    let built;
-    try {
-      built = buildRequest(op, svc, this.cfg, input, authCtx);
-    } catch (e) {
-      return fail(e, { diagnostics: { request: this.diag.validateRequest(snapshot, op, input, auth.injections.map((i) => `${i.where}:${i.name}`)), response: NOT_AVAILABLE } });
-    }
-    if (auth.mode === 'profile' && auth.profile!.cookieOnly && cookiesFor(cloneJar(auth.jar!), built.request.url).length === 0) {
-      const t = auth.profile!.cfg.target;
-      const label = 'profile' in t ? `profile ${t.profile}` : `service ${t.service} auth`;
-      return fail(new ToolError('AUTH_REQUIRED', `${label} cannot send: cookies; call authenticate or import a session`));
-    }
-    const requestDiag = this.diag.validateRequest(snapshot, op, input, built.injected);
-    const authInfo = {
-      mode: auth.mode,
-      ...(auth.profile ? { target: auth.profile.cfg.target } : {}),
-      ...(auth.session ? { sessionId: auth.session.id } : {}),
-      injected: built.injected,
-      overridden: built.overrides,
-    };
     // A request-supplied value for a managed credential destination makes this a deliberate test:
     // no automatic recovery, and no Set-Cookie commits into the managed profile.
-    const overridden = built.overrides.length > 0;
     if (overridden && auth.mode === 'profile' && auth.jar) workJar = cloneJar(auth.jar);
 
     const notes: string[] = [...built.issues.map((i) => `${i.keyword} at ${i.pointer}: ${i.message}`)];
@@ -195,6 +173,9 @@ export class Invoker {
     const hops: RedirectHop[] = [];
     let sentAny = false;
     let current: PreparedRequest = built.request;
+    let observation: RequestObservation = await this.withBodyArtifact(built.observation, built.request);
+    const observedInput = await this.observeInput(input);
+    let exchange: ExchangeScope | undefined;
     let res: RawResponse | undefined;
     let lastStatus: { status: number; headers: Record<string, string | string[]> } | undefined;
 
@@ -203,8 +184,8 @@ export class Invoker {
       const list = Array.isArray(sc) ? sc : sc ? [sc] : [];
       if (list.length === 0 || auth.mode === 'anonymous') return;
       if (auth.mode === 'profile' && !overridden) {
-        const p = auth.profile!;
-        if (p.revision !== auth.requestRevision || p.generation !== auth.generation) {
+        const prof = auth.profile!;
+        if (prof.revision !== auth.requestRevision || prof.generation !== auth.generation) {
           notes.push('Set-Cookie from a response to an older credential revision was returned but not stored');
           return;
         }
@@ -214,14 +195,32 @@ export class Invoker {
     };
 
     try {
+      let parentId: RequestId | undefined;
       for (;;) {
+        exchange = this.trace.beginExchange({
+          purpose: 'business',
+          service: svc.id,
+          operation: op.key,
+          revision: snapshot.revision,
+          ...(call ? { callId: call.callId } : {}),
+          ...(parentId ? { parentId, relation: 'redirect' as const } : {}),
+          hop: hops.length,
+          request: observation,
+          ...(hops.length === 0 ? { input: observedInput } : {}),
+        });
+        requestIds.push(exchange.requestId);
         try {
           sentAny = true;
-          res = await this.transport.send(args.service, current, { signal: timeout.signal });
+          res = await this.transport.send(svc.id, current, { signal: timeout.signal, purpose: 'business', exchange });
         } catch (e) {
+          if (e instanceof ToolError && e.code === 'NETWORK_POLICY_BLOCKED') {
+            sentAny = hops.length > 0;
+            return fail(e, { sent: sentAny, ...(lastStatus ? { http: { ...lastStatus, redirects: hops } } : {}), diagnostics: { request: requestDiag, response: NOT_AVAILABLE }, auth: authInfo });
+          }
           const info = classifyNetworkError(e, timeout.signal);
           if (!info.mayHaveBeenSent && hops.length === 0) sentAny = false;
-          return {
+          exchange.end({ outcome: 'network_error', sendState: info.mayHaveBeenSent ? 'maybe_sent' : 'not_sent', errorCode: info.code });
+          return withTrace({
             ...base,
             sent: sentAny,
             ...(lastStatus ? { http: { ...lastStatus, redirects: hops } } : {}),
@@ -230,7 +229,7 @@ export class Invoker {
             notes: notes.length ? notes : undefined,
             error: { code: info.code, message: info.message, mayHaveBeenSent: info.mayHaveBeenSent },
             timingMs: Date.now() - started,
-          };
+          });
         }
         commitCookies(current.url, res.headers);
         lastStatus = { status: res.status, headers: res.headers };
@@ -251,25 +250,43 @@ export class Invoker {
           notes.push(`cross-origin redirect to ${next.origin} was not followed; credentials are never forwarded across origins`);
           break;
         }
+        try {
+          assertUrlWithinService(svc, next.toString());
+        } catch {
+          notes.push('redirect to a path outside the configured baseUrl prefix was not followed');
+          break;
+        }
+        const hopNetwork = this.prep.network.check(svc.id, 'business', next.toString());
+        if (!hopNetwork.allowed) {
+          notes.push(`redirect to ${hopNetwork.origin} was not followed; it is outside the allowed destinations`);
+          break;
+        }
         const switchToGet = (res.status === 303 && current.method !== 'HEAD') || ((res.status === 301 || res.status === 302) && current.method === 'POST');
         discard(res.body);
+        exchange.end({ outcome: 'response', sendState: 'response_received', bodyDiscarded: 'redirect' });
+        parentId = exchange.requestId;
         hops.push({ status: res.status, method: current.method, url: redact(current.url), location: redact(next.toString()) });
         const userCookie = Object.keys(input.headers ?? {}).some((k) => k.toLowerCase() === 'cookie');
-        let headers = current.headers.filter(([n]) => !(switchToGet && ENTITY_HEADERS.has(n.toLowerCase())));
+        let headers = current.headers.filter(([n]) => !(switchToGet && Object.hasOwn(ENTITY_HEADERS, n.toLowerCase())));
+        let cookieObs: { fields: ObservedField[]; header?: string; managed: boolean } | undefined;
         if (!userCookie) {
           headers = headers.filter(([n]) => n.toLowerCase() !== 'cookie');
-          const c = composeCookies(next.toString(), authCtx, input.cookies);
+          const c = composeCookies(next.toString(), authCtx, input.cookies, limit);
           if (c.header) headers.push(['cookie', c.header]);
+          cookieObs = { fields: c.observed, header: c.header, managed: c.managedNames.size > 0 };
         }
-        current = { method: switchToGet ? 'GET' : current.method, url: next.toString(), headers, body: switchToGet ? undefined : current.body };
+        const nextMethod = switchToGet ? 'GET' : current.method;
+        observation = observeRedirectHop(observation, { url: next.toString(), method: nextMethod, dropEntityHeaders: switchToGet, cookies: cookieObs }, limit);
+        current = { method: nextMethod, url: next.toString(), headers, body: switchToGet ? undefined : current.body };
         res = undefined;
       }
 
-      // ---- final response: capture entity bytes into a session artifact
+      // ---- final response: capture entity bytes into a session artifact (raw bytes, whatever the status)
       const finalRes = res!;
+      const finalExchange = exchange!;
       const contentType = headerText(finalRes.headers['content-type']);
-      const cap = await this.artifacts.capture(finalRes.body, { maxBytes: this.cfg.limits.responseBytes, mediaType: contentType });
-      let bodyComplete = cap.complete;
+      const cap = await this.artifacts.capture(finalRes.body, { maxBytes: this.cfg.limits.responseBytes, mediaType: contentType, origin: 'response_body' });
+      const bodyComplete = cap.complete;
       let incompleteReason: string | undefined;
       if (cap.streamError) {
         const info = classifyNetworkError(cap.streamError, timeout.signal);
@@ -283,7 +300,7 @@ export class Invoker {
       if (finalRes.status === 401 && auth.mode === 'profile') {
         authRecovery = overridden
           ? { state: 'not_started', target: auth.profile!.cfg.target, revision: auth.profile!.revision, reason: 'request supplied its own value for a managed credential' }
-          : this.recovery.onUnauthorized(auth.profile!, auth.requestRevision);
+          : this.recovery.onUnauthorized(auth.profile!, auth.requestRevision, { ...(call ? { callId: call.callId } : {}), requestId: finalExchange.requestId });
       }
 
       const analysis = await this.analyzeBody(cap.artifact, contentType, bodyComplete);
@@ -295,7 +312,14 @@ export class Invoker {
         bodyComplete,
         method: finalMethod,
       };
-      const responseDiag = this.diag.validateResponse(snapshot, op, responseView);
+      const responseDiag = this.prep.diagnostics.validateResponse(snapshot, op, responseView);
+      finalExchange.end({
+        outcome: 'response',
+        sendState: 'response_received',
+        ...(cap.artifact ? { body: this.artifacts.describe(cap.artifact.id) } : {}),
+        ...(incompleteReason ? { bodyIncompleteReason: incompleteReason } : {}),
+        diagnostics: { request: requestDiag, response: responseDiag },
+      });
 
       let captureOutcome: CaptureOutcome | undefined;
       if (args.capture) {
@@ -307,8 +331,9 @@ export class Invoker {
         });
       }
 
-      const hdr = boundHeaders(finalRes.headers);
-      const envelope: InvokeResult = {
+      const hdr = boundHeaders(finalRes.headers, MAX_HEADER_BYTES);
+      // The trace ids are part of the envelope BEFORE fitting, so the output budget accounts for them.
+      const envelope: InvokeResult = withTrace({
         ...base,
         sent: true,
         http: { status: finalRes.status, headers: hdr.headers, ...(hdr.truncated ? { headersTruncated: true } : {}), redirects: hops },
@@ -321,10 +346,11 @@ export class Invoker {
         ...(captureOutcome ? { capture: captureOutcome } : {}),
         ...(notes.length ? { notes } : {}),
         timingMs: Date.now() - started,
-      };
+      });
       return this.fit(envelope, cap.artifact, analysis, snapshot, op, finalRes.status, contentType, svc.id);
     } catch (e) {
       log.error('invoke failed', { code: errorInfo(e).code });
+      exchange?.end({ outcome: 'aborted', sendState: res ? 'response_received' : sentAny ? 'maybe_sent' : 'not_sent', errorCode: errorInfo(e).code });
       return fail(e, { sent: sentAny, auth: authInfo, diagnostics: { request: requestDiag, response: NOT_AVAILABLE } });
     } finally {
       timeout.dispose();

@@ -78,10 +78,14 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
     configPath,
     write,
     opKey,
-    call: (service, operationId, args = {}) => {
+    call: async (service, operationId, args = {}) => {
       const snap = app.registry.peek(service);
       if (!snap) throw new Error(`service ${service} unavailable`);
-      return app.invoker.invoke({ service, operation: opKey(service, operationId), revision: snap.revision, ...args });
+      // Same shape as the MCP tool wrapper: one trace call around the invocation.
+      const scope = app.recorderForServer.beginCall({ tool: 'invoke_operation', args: { service, operation: operationId } });
+      const r = await app.invoker.invoke({ service, operation: opKey(service, operationId), revision: snap.revision, ...args }, scope);
+      scope.end({ isError: r.error !== undefined, ...(r.error ? { errorCode: r.error.code } : {}) });
+      return r;
     },
     async close() {
       await app.close();
