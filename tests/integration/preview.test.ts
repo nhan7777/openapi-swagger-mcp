@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../../src/server.js';
-import type { PrepareArgs } from '../../src/request-prep.js';
+import { Previewer } from '../../src/preview.js';
+import type { PrepareArgs, PrepareOutcome } from '../../src/request-prep.js';
 import type { RequestInput } from '../../src/types.js';
 import { startHarness, SERVICES, type Harness } from '../helpers/harness.js';
 import { DIALECTS } from '../helpers/specs.js';
@@ -277,5 +278,84 @@ describe('preview_operation over MCP: a trace call without any exchange', () => 
     const tool = (await s.client.listTools()).tools.find((t) => t.name === 'preview_operation')!;
     expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
     await s.client.close();
+  });
+});
+
+describe('the final result is bounded whatever the metadata looks like', () => {
+  const cap = (): number => Math.floor(h.app.cfg.limits.toolOutputBytes * 0.9);
+  const size = (o: unknown): number => Buffer.byteLength(JSON.stringify(o), 'utf8');
+  const huge = 'x'.repeat(100_000);
+
+  test('a huge operation, service or revision in a blocked preview still returns its blockers', () => {
+    for (const a of [
+      { service: 'o30', operation: huge, revision: revOf('o30') },
+      { service: huge, operation: 'GET /x', revision: 'r' },
+      { service: 'o30', operation: h.opKey('o30', 'getItem'), revision: huge },
+    ]) {
+      const pv = h.app.previewer.preview(a);
+      expect(pv.ready).toBe(false);
+      expect(pv.blockers.length).toBeGreaterThan(0);
+      expect(pv.blockers[0]!.code).toBeTruthy();
+      expect(size(pv)).toBeLessThanOrEqual(cap());
+    }
+  });
+
+  test('over MCP an oversized blocked preview is a normal result, not OUTPUT_TOO_LARGE', async () => {
+    const s = await connect();
+    const r = await s.call('preview_operation', { service: 'o30', operation: huge, revision: revOf('o30') });
+    expect(r.isError).toBe(false);
+    expect(r.data).toMatchObject({ sent: false, ready: false, blockers: [{ code: 'OPERATION_UNKNOWN' }] });
+    expect(Buffer.byteLength(r.text)).toBeLessThanOrEqual(h.app.cfg.limits.toolOutputBytes);
+    await s.client.close();
+  });
+
+  test('a ready request with a huge header value, hundreds of long query names and a huge cookie stays bounded and says what it cut', async () => {
+    const query: Record<string, string> = {};
+    for (let i = 0; i < 600; i++) query[`q${i}_${'n'.repeat(200)}`] = 'v'.repeat(300);
+    const s = await connect();
+    const r = await s.call('preview_operation', {
+      service: 'o30',
+      operation: h.opKey('o30', 'getItem'),
+      revision: revOf('o30'),
+      input: { path: { id: 5 }, query, headers: { 'X-Big': huge }, cookies: { big: huge } },
+      auth: { mode: 'anonymous' },
+    });
+    expect(r.isError).toBe(false);
+    expect(r.data.ready).toBe(true);
+    expect(Buffer.byteLength(r.text)).toBeLessThanOrEqual(h.app.cfg.limits.toolOutputBytes);
+    const big = r.data.request.headers.find((f: { name: string }) => f.name === 'X-Big');
+    expect(big).toMatchObject({ source: 'request', unrecordedReason: 'over_limit' });
+    expect(big.value).toBeUndefined();
+    expect(r.data.request.truncatedLists ?? r.data.request.query.length).toBeTruthy();
+    expect(h.backend.count()).toBe(0);
+    await s.client.close();
+  });
+
+  test('diagnostics, blockers, notes and names are capped with the cuts named', () => {
+    const issue = (i: number) => ({ pointer: `/p/${i}/${huge}`, keyword: 'k'.repeat(5000), message: huge });
+    const blocker = (i: number) => ({ code: 'C'.repeat(5000), stage: 'build' as const, message: huge, details: { i, blob: huge } });
+    const outcome: PrepareOutcome = {
+      ok: false,
+      blockers: [blocker(0), blocker(1), blocker(2), blocker(3), blocker(4), blocker(5), blocker(6)],
+      requestDiagnostics: { state: 'invalid', issues: Array.from({ length: 5000 }, (_, i) => issue(i)) },
+      target: { service: 'o30', baseUrl: 'http://127.0.0.1:9' },
+    };
+    const pv = new Previewer(() => outcome, 32768).preview({ service: 'o30', operation: 'GET /x', revision: 'r' });
+    expect(size(pv)).toBeLessThanOrEqual(Math.floor(32768 * 0.9));
+    expect(pv.blockers.length).toBeLessThanOrEqual(5);
+    expect(pv.diagnostics!.request.issues.length).toBeLessThanOrEqual(50);
+    expect(pv.diagnostics!.request.state).toBe('invalid');
+    expect(pv.truncated).toEqual(expect.arrayContaining(['blockers', 'diagnostics']));
+  });
+
+  test('a tiny output budget still ends with the blocker, never above the cap', () => {
+    for (const outputBytes of [1024, 2048, 4096]) {
+      const pv = new Previewer(
+        () => ({ ok: false, blockers: [{ code: 'AUTH_REQUIRED', stage: 'auth', message: huge }], requestDiagnostics: { state: 'invalid', issues: [{ pointer: '/a', keyword: 'type', message: 'm' }] } }),
+        outputBytes,
+      ).preview({ service: 'o30', operation: huge, revision: 'r' });
+      expect(size(pv), String(outputBytes)).toBeLessThanOrEqual(Math.floor(outputBytes * 0.9));
+      expect(pv).toMatchObject({ sent: false, ready: false, blockers: [{ code: 'AUTH_REQUIRED' }] });
+    }
   });
 });
