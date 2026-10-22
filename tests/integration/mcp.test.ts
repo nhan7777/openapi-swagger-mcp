@@ -130,6 +130,7 @@ describe('stable tool surface', () => {
     const wrong = await s.call('search_operations', { query: 'customer', limit: 2, cursor: page1.data.nextCursor });
     expect(wrong.isError).toBe(true);
     expect(wrong.data.error.code).toBe('CURSOR_INVALID');
+    expect(wrong.data.error.details.reason).toBe('QUERY_MISMATCH');
   });
 
   test('envelopes are strict: unknown arguments and arbitrary URLs are rejected', async () => {

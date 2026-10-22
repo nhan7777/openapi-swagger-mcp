@@ -1,0 +1,2051 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Media",
+  "version": "1.0.0"
+ },
+ "paths": {
+  "/videos": {
+   "get": {
+    "operationId": "listVideos",
+    "summary": "List videos",
+    "tags": [
+     "videos"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "channelId",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Video"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "uploadVideo",
+    "summary": "Upload a video",
+    "tags": [
+     "videos"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VideoInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Video"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/videos/{videoId}": {
+   "get": {
+    "operationId": "getVideo",
+    "summary": "Get a video",
+    "tags": [
+     "videos"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Video"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "operationId": "updateVideo",
+    "summary": "Update a video",
+    "tags": [
+     "videos"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "thumbnailUrl": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Video"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "operationId": "deleteVideo",
+    "summary": "Delete a video",
+    "tags": [
+     "videos"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/videos/{videoId}/captions": {
+   "get": {
+    "operationId": "listCaptions",
+    "summary": "List captions",
+    "tags": [
+     "captions"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "languageCode": {
+              "type": "string"
+             },
+             "cueCount": {
+              "type": "integer"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "addCaption",
+    "summary": "Add a caption track",
+    "description": "Upload a WebVTT caption file for a video",
+    "tags": [
+     "captions"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "languageCode": {
+          "type": "string"
+         },
+         "webvttBody": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/videos/{videoId}/renditions": {
+   "get": {
+    "operationId": "listRenditions",
+    "summary": "List renditions",
+    "description": "HLS and DASH renditions of a video",
+    "tags": [
+     "videos"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "bitrateKbps": {
+              "type": "integer"
+             },
+             "codec": {
+              "type": "string"
+             },
+             "resolution": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/videos/{videoId}/transcode": {
+   "post": {
+    "operationId": "startTranscode",
+    "summary": "Start a transcode",
+    "tags": [
+     "jobs"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "videoId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "targetCodec": {
+          "type": "string"
+         },
+         "resolution": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "jobId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/jobs/{jobId}": {
+   "get": {
+    "operationId": "getTranscodeJob",
+    "summary": "Get a transcode job",
+    "tags": [
+     "jobs"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "jobId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "jobId": {
+           "type": "string"
+          },
+          "state": {
+           "type": "string"
+          },
+          "progressPercent": {
+           "type": "number"
+          },
+          "output": {
+           "type": "object",
+           "properties": {
+            "files": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "properties": {
+               "url": {
+                "type": "string"
+               },
+               "sizeBytes": {
+                "type": "integer"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/playlists": {
+   "get": {
+    "operationId": "listPlaylists",
+    "summary": "List playlists",
+    "tags": [
+     "playlists"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "playlistId": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createPlaylist",
+    "summary": "Create a playlist",
+    "tags": [
+     "playlists"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "description": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "playlistId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/playlists/{playlistId}/items": {
+   "put": {
+    "operationId": "setPlaylistItems",
+    "summary": "Replace playlist items",
+    "tags": [
+     "playlists"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "playlistId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "videoIds": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/playlists/{playlistId}": {
+   "get": {
+    "operationId": "getPlaylist",
+    "summary": "Get a playlist",
+    "tags": [
+     "playlists"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "playlistId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "playlistId": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/channels": {
+   "get": {
+    "operationId": "listChannels",
+    "summary": "List channels",
+    "tags": [
+     "channels"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "channelId": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/channels/{channelId}": {
+   "get": {
+    "operationId": "getChannel",
+    "summary": "Get a channel",
+    "tags": [
+     "channels"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channelId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "channelId": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          },
+          "subscriberCount": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/channels/{channelId}/subscribe": {
+   "post": {
+    "operationId": "subscribeChannel",
+    "summary": "Subscribe to a channel",
+    "tags": [
+     "channels"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channelId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/comments": {
+   "get": {
+    "operationId": "listComments",
+    "summary": "List comments",
+    "tags": [
+     "comments"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "videoId",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "commentId": {
+              "type": "string"
+             },
+             "authorName": {
+              "type": "string"
+             },
+             "body": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "postComment",
+    "summary": "Post a comment",
+    "tags": [
+     "comments"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "videoId": {
+          "type": "string"
+         },
+         "body": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "commentId": {
+           "type": "string"
+          },
+          "body": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/comments/{commentId}": {
+   "delete": {
+    "operationId": "removeComment",
+    "summary": "Remove a comment",
+    "tags": [
+     "comments"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "commentId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/analytics/views": {
+   "get": {
+    "operationId": "getViewAnalytics",
+    "summary": "View analytics",
+    "tags": [
+     "analytics"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "viewCount": {
+           "type": "integer"
+          },
+          "watchTimeSeconds": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/analytics/audience": {
+   "get": {
+    "operationId": "getAudienceAnalytics",
+    "summary": "Audience analytics",
+    "tags": [
+     "analytics"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "segments": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "countryCode": {
+              "type": "string"
+             },
+             "ageBucket": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/live/streams": {
+   "get": {
+    "operationId": "listLiveStreams",
+    "summary": "List live streams",
+    "tags": [
+     "live"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "streamId": {
+              "type": "string"
+             },
+             "state": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "startLiveStream",
+    "summary": "Start a live stream",
+    "description": "Create an RTMP or SRT ingest endpoint",
+    "tags": [
+     "live"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "ingestProtocol": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "streamId": {
+           "type": "string"
+          },
+          "streamKey": {
+           "type": "string"
+          },
+          "ingestUrl": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/live/streams/{streamId}/stop": {
+   "post": {
+    "operationId": "stopLiveStream",
+    "summary": "Stop a live stream",
+    "tags": [
+     "live"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "streamId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/podcasts": {
+   "get": {
+    "operationId": "listPodcasts",
+    "summary": "List podcasts",
+    "tags": [
+     "podcasts"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "podcastId": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/podcasts/{podcastId}/episodes": {
+   "get": {
+    "operationId": "listEpisodes",
+    "summary": "List episodes",
+    "tags": [
+     "podcasts"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "podcastId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "episodeNumber": {
+              "type": "integer"
+             },
+             "title": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "publishEpisode",
+    "summary": "Publish an episode",
+    "tags": [
+     "podcasts"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "podcastId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "audioUrl": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "episodeNumber": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/images/{imageId}": {
+   "get": {
+    "operationId": "getImage",
+    "summary": "Get an image",
+    "tags": [
+     "images"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "imageId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "imageId": {
+           "type": "string"
+          },
+          "widthPixels": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/images": {
+   "post": {
+    "operationId": "uploadImage",
+    "summary": "Upload an image",
+    "tags": [
+     "images"
+    ],
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "imageId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/licenses": {
+   "get": {
+    "operationId": "listLicenses",
+    "summary": "List licenses",
+    "tags": [
+     "licenses"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "licenseId": {
+              "type": "string"
+             },
+             "licenseTerms": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/licenses/{licenseId}/grant": {
+   "post": {
+    "operationId": "grantLicense",
+    "summary": "Grant a license",
+    "tags": [
+     "licenses"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "licenseId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "licensee": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/moderation/flags": {
+   "get": {
+    "operationId": "listModerationFlags",
+    "summary": "List moderation flags",
+    "tags": [
+     "moderation"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "flagId": {
+              "type": "string"
+             },
+             "reason": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/moderation/flags/{flagId}/resolve": {
+   "post": {
+    "operationId": "resolveFlag",
+    "summary": "Resolve a flag",
+    "tags": [
+     "moderation"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "flagId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "resolution": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/search/suggest": {
+   "get": {
+    "operationId": "suggestTitles",
+    "summary": "Suggest titles",
+    "tags": [
+     "search"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "prefix",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "suggestions": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recommendations": {
+   "get": {
+    "operationId": "getRecommendations",
+    "summary": "Get recommendations",
+    "tags": [
+     "search"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "videoId": {
+              "type": "string"
+             },
+             "score": {
+              "type": "number"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/webhooks": {
+   "post": {
+    "operationId": "registerMediaWebhook",
+    "summary": "Register a webhook",
+    "tags": [
+     "integration"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "callbackUrl": {
+          "type": "string"
+         },
+         "events": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "webhookId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/billing/usage": {
+   "get": {
+    "operationId": "getBillingUsage",
+    "summary": "Billing usage",
+    "description": "Storage and CDN egress usage for the month",
+    "tags": [
+     "billing"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "storageBytes": {
+           "type": "integer"
+          },
+          "egressBytes": {
+           "type": "integer"
+          },
+          "breakdown": {
+           "type": "object",
+           "properties": {
+            "byRegion": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "properties": {
+               "regionCode": {
+                "type": "string"
+               },
+               "gigabytes": {
+                "type": "number"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/health": {
+   "get": {
+    "operationId": "getMediaHealth",
+    "summary": "Health check",
+    "tags": [
+     "ops"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/users/{userId}/history": {
+   "get": {
+    "operationId": "getWatchHistory",
+    "summary": "Watch history",
+    "tags": [
+     "users"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "userId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "videoId": {
+              "type": "string"
+             },
+             "watchedAt": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    }
+   },
+   "Asset": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "createdAt": {
+      "type": "string"
+     }
+    }
+   },
+   "Video": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Asset"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "durationSeconds": {
+        "type": "number"
+       },
+       "language": {
+        "type": "string"
+       },
+       "thumbnailUrl": {
+        "type": "string"
+       }
+      }
+     }
+    ]
+   },
+   "VideoInput": {
+    "allOf": [
+     {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "language": {
+        "type": "string"
+       }
+      }
+     },
+     {
+      "type": "object",
+      "properties": {
+       "tags": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ }
+}

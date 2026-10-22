@@ -6,6 +6,8 @@ import YAML from 'yaml';
 import type { AppConfig, ServiceConfig } from '../config.js';
 import { CredentialSources } from '../auth/credentials.js';
 import type { Transport } from '../http/transport.js';
+import { observeSpecFetch } from '../trace/observe.js';
+import type { CallId, TraceRecorder } from '../trace/types.js';
 import { ToolError } from '../types.js';
 import { boundedDiagnostic, canonicalJson, isInside, isPlainObject, sanitizeMessage, sha256Hex } from '../util.js';
 import { buildOperations, detectDialect, type Dialect, type Operation } from './model.js';
@@ -61,28 +63,39 @@ export class SpecLoader {
   constructor(
     private readonly cfg: AppConfig,
     private readonly transport: Transport,
+    private readonly trace: TraceRecorder,
   ) {
     this.creds = new CredentialSources(cfg);
   }
 
-  private authFor(svc: ServiceConfig, rawUrl: string): { headers: Array<[string, string]>; url: string } {
+  /** Spec-fetch credentials for `rawUrl`, plus the destination NAMES they use (for the trace; never the values). */
+  private authFor(svc: ServiceConfig, rawUrl: string): { headers: Array<[string, string]>; url: string; credential: { headers: string[]; query: string[]; cookie: boolean } } {
+    const none = { headers: [], url: rawUrl, credential: { headers: [], query: [], cookie: false } };
     const auth = svc.spec.auth;
-    if (!auth || !auth.bindings.length) return { headers: [], url: rawUrl };
+    if (!auth || !auth.bindings.length) return none;
     const u = new URL(rawUrl);
     const srcOrigin = 'url' in svc.spec.source ? new URL(svc.spec.source.url).origin : undefined;
-    if (u.origin !== srcOrigin) return { headers: [], url: rawUrl }; // credentials only go to the configured source origin
+    if (u.origin !== srcOrigin) return none; // credentials only go to the configured source origin
     const headers: Array<[string, string]> = [];
     const cookies: string[] = [];
+    const credential = { headers: [] as string[], query: [] as string[], cookie: false };
     for (const inj of this.creds.resolveBindings(auth, new Map())) {
-      if (inj.where === 'header') headers.push([inj.name, inj.value]);
-      else if (inj.where === 'query') u.searchParams.append(inj.name, inj.value);
-      else cookies.push(`${inj.name}=${inj.value}`);
+      if (inj.where === 'header') {
+        headers.push([inj.name, inj.value]);
+        credential.headers.push(inj.name);
+      } else if (inj.where === 'query') {
+        u.searchParams.append(inj.name, inj.value);
+        credential.query.push(inj.name);
+      } else cookies.push(`${inj.name}=${inj.value}`);
     }
-    if (cookies.length) headers.push(['cookie', cookies.join('; ')]);
-    return { headers, url: u.toString() };
+    if (cookies.length) {
+      headers.push(['cookie', cookies.join('; ')]);
+      credential.cookie = true;
+    }
+    return { headers, url: u.toString(), credential };
   }
 
-  async load(serviceId: string): Promise<Snapshot> {
+  async load(serviceId: string, callId?: CallId): Promise<Snapshot> {
     const svc = this.cfg.services.get(serviceId);
     if (!svc) throw new ToolError('SERVICE_UNKNOWN', `unknown service ${serviceId}`);
     const lim = this.cfg.limits;
@@ -145,7 +158,16 @@ export class SpecLoader {
       if (u.username || u.password) throw new ToolError('SPEC_REF_FORBIDDEN', 'spec URLs must not contain credentials');
       if (!svc.spec.allowedOrigins.includes(u.origin)) throw new ToolError('SPEC_REF_FORBIDDEN', `reference to non-allowed origin ${u.origin}`);
       const a = this.authFor(svc, identity);
-      const buf = await this.transport.fetchBounded(svc.id, a.url, { headers: a.headers, maxBytes: lim.specDocumentBytes });
+      const purpose = parent === undefined ? 'spec_root' : 'spec_ref';
+      const headers: Array<[string, string]> = [['accept', 'application/json, application/yaml, text/yaml, */*;q=0.5'], ['accept-encoding', 'gzip, deflate, br'], ...a.headers];
+      const exchange = this.trace.beginExchange({
+        purpose,
+        service: svc.id,
+        ...(callId ? { callId } : {}),
+        hop: 0,
+        request: observeSpecFetch(a.url, headers, a.credential),
+      });
+      const buf = await this.transport.fetchBounded(svc.id, a.url, { headers: a.headers, maxBytes: lim.specDocumentBytes, purpose, exchange });
       account(identity, buf, parent);
       return buf;
     };

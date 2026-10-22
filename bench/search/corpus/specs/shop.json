@@ -1,0 +1,2376 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Shop",
+  "version": "1.0.0"
+ },
+ "paths": {
+  "/orders": {
+   "get": {
+    "operationId": "listOrders",
+    "summary": "List orders",
+    "description": "Danh sách đơn hàng theo trạng thái",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "customerId",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "pageSize",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OrderPage"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createOrder",
+    "summary": "Create order",
+    "description": "Tạo đơn hàng mới",
+    "tags": [
+     "orders"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OrderInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Order"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/orders/{orderId}": {
+   "get": {
+    "operationId": "getOrder",
+    "summary": "Get order detail",
+    "description": "Chi tiết đơn hàng",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Order"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "operationId": "updateOrder",
+    "summary": "Update order",
+    "description": "Cập nhật đơn hàng",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "status": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Order"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "operationId": "cancelOrder",
+    "summary": "Cancel order",
+    "description": "Hủy đơn hàng",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "reason",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Lý do hủy"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/orders/{orderId}/refunds": {
+   "post": {
+    "operationId": "createRefund",
+    "summary": "Refund order",
+    "description": "Hoàn tiền đơn hàng",
+    "tags": [
+     "orders",
+     "payments"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "amount": {
+          "type": "number"
+         },
+         "reasonCode": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "refundId": {
+           "type": "string"
+          },
+          "refundStatus": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/orders/{orderId}/shipments": {
+   "get": {
+    "operationId": "listOrderShipments",
+    "summary": "Shipments of an order",
+    "description": "Danh sách vận đơn của đơn hàng",
+    "tags": [
+     "shipping"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "shipmentId": {
+              "type": "string"
+             },
+             "carrierName": {
+              "type": "string"
+             },
+             "trackingNumber": {
+              "type": "string"
+             },
+             "estimatedDeliveryDate": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/orders/{orderId}/history": {
+   "get": {
+    "operationId": "getOrderHistory",
+    "summary": "Order status history",
+    "description": "Lịch sử trạng thái đơn hàng",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "status": {
+              "type": "string"
+             },
+             "changedAt": {
+              "type": "string"
+             },
+             "changedBy": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/invoices": {
+   "get": {
+    "operationId": "listInvoices",
+    "summary": "List invoices",
+    "description": "Danh sách hóa đơn",
+    "tags": [
+     "invoices"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "fromDate",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "toDate",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Invoice"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/invoices/{invoiceId}": {
+   "get": {
+    "operationId": "getInvoice",
+    "summary": "Get invoice",
+    "description": "Chi tiết hóa đơn VAT",
+    "tags": [
+     "invoices"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoiceId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Invoice"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/invoices/{invoiceId}/send": {
+   "post": {
+    "operationId": "sendInvoiceEmail",
+    "summary": "Send invoice by email",
+    "description": "Gửi hóa đơn qua email",
+    "tags": [
+     "invoices"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoiceId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "emailAddress": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/invoices/{invoiceId}/pdf": {
+   "get": {
+    "operationId": "downloadInvoicePdf",
+    "summary": "Download invoice PDF",
+    "description": "Tải hóa đơn PDF",
+    "tags": [
+     "invoices"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoiceId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/customers": {
+   "get": {
+    "operationId": "listCustomers",
+    "summary": "Search customers",
+    "description": "Tìm kiếm khách hàng theo tên hoặc số điện thoại",
+    "tags": [
+     "customers"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "phoneNumber",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Customer"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "operationId": "createCustomer",
+    "summary": "Create customer",
+    "description": "Tạo khách hàng",
+    "tags": [
+     "customers"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CustomerInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Customer"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/customers/{customerId}": {
+   "get": {
+    "operationId": "getCustomer",
+    "summary": "Get customer",
+    "description": "Thông tin khách hàng",
+    "tags": [
+     "customers"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "customerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Customer"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/customers/{customerId}/addresses": {
+   "get": {
+    "operationId": "listCustomerAddresses",
+    "summary": "Customer addresses",
+    "description": "Sổ địa chỉ khách hàng",
+    "tags": [
+     "customers"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "customerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Address"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/products": {
+   "get": {
+    "operationId": "listProducts",
+    "summary": "List products",
+    "description": "Danh sách sản phẩm",
+    "tags": [
+     "catalog"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "category",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minPrice",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxPrice",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Product"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/products/{sku}": {
+   "get": {
+    "operationId": "getProduct",
+    "summary": "Get product",
+    "description": "Chi tiết sản phẩm",
+    "tags": [
+     "catalog"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sku",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Product"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/products/{sku}/price": {
+   "put": {
+    "operationId": "updateProductPrice",
+    "summary": "Update product price",
+    "description": "Cập nhật giá sản phẩm",
+    "tags": [
+     "catalog"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sku",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "unitPrice": {
+          "type": "number"
+         },
+         "effectiveFrom": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Product"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/inventory/warehouses/{warehouseId}/stock": {
+   "get": {
+    "operationId": "getWarehouseStock",
+    "summary": "Warehouse stock levels",
+    "description": "Tồn kho theo kho, theo SKU",
+    "tags": [
+     "inventory"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "warehouseId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "sku": {
+              "type": "string"
+             },
+             "availableQuantity": {
+              "type": "integer"
+             },
+             "reservedQuantity": {
+              "type": "integer"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/inventory/transfers": {
+   "post": {
+    "operationId": "createStockTransfer",
+    "summary": "Transfer stock between warehouses",
+    "description": "Chuyển kho",
+    "tags": [
+     "inventory"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "fromWarehouseId": {
+          "type": "string"
+         },
+         "toWarehouseId": {
+          "type": "string"
+         },
+         "items": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "sku": {
+             "type": "string"
+            },
+            "quantity": {
+             "type": "integer"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "transferId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payments": {
+   "post": {
+    "operationId": "createPayment",
+    "summary": "Create payment",
+    "description": "Thanh toán đơn hàng",
+    "tags": [
+     "payments"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "orderId": {
+          "type": "string"
+         },
+         "paymentMethod": {
+          "type": "string"
+         },
+         "cardToken": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Payment"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payments/{paymentId}": {
+   "get": {
+    "operationId": "getPayment",
+    "summary": "Get payment status",
+    "description": "Trạng thái thanh toán",
+    "tags": [
+     "payments"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "paymentId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Payment"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/payments/{paymentId}/capture": {
+   "post": {
+    "operationId": "capturePayment",
+    "summary": "Capture payment",
+    "description": "Ghi nhận thanh toán đã ủy quyền",
+    "tags": [
+     "payments"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "paymentId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "captureAmount": {
+          "type": "number"
+         },
+         "merchantReference": {
+          "type": "string",
+          "description": "Merchant reference sent by the caller"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/login": {
+   "post": {
+    "operationId": "login",
+    "summary": "Log in",
+    "description": "Đăng nhập",
+    "tags": [
+     "auth"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "username": {
+          "type": "string"
+         },
+         "password": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Tokens"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/refresh": {
+   "post": {
+    "operationId": "refreshToken",
+    "summary": "Refresh access token",
+    "description": "Làm mới token",
+    "tags": [
+     "auth"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "refreshToken": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Tokens"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/otp/send": {
+   "post": {
+    "operationId": "sendOtpSMS",
+    "summary": "Send OTP via SMS",
+    "description": "Gửi mã OTP qua tin nhắn",
+    "tags": [
+     "auth"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "phoneNumber": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/otp/verify": {
+   "post": {
+    "operationId": "verifyOtp",
+    "summary": "Verify OTP code",
+    "description": "Xác thực mã OTP",
+    "tags": [
+     "auth"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "phoneNumber": {
+          "type": "string"
+         },
+         "otp": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Tokens"
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/users/me": {
+   "get": {
+    "operationId": "getCurrentUser",
+    "summary": "Current user profile",
+    "description": "Hồ sơ người dùng",
+    "tags": [
+     "auth"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "userId": {
+           "type": "string"
+          },
+          "displayName": {
+           "type": "string"
+          },
+          "roles": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/reports/sales": {
+   "get": {
+    "operationId": "getSalesReport",
+    "summary": "Sales report",
+    "description": "Báo cáo doanh thu",
+    "tags": [
+     "reports"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "fromDate",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "toDate",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "groupBy",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "rows": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "period": {
+              "type": "string"
+             },
+             "revenue": {
+              "type": "number"
+             },
+             "orderCount": {
+              "type": "integer"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/reports/vat": {
+   "get": {
+    "operationId": "getVatReport",
+    "summary": "VAT report",
+    "description": "Báo cáo thuế GTGT",
+    "tags": [
+     "reports"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "month",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/webhooks": {
+   "post": {
+    "operationId": "registerWebhook",
+    "summary": "Register webhook",
+    "description": "Đăng ký webhook",
+    "tags": [
+     "integration"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "callbackUrl": {
+          "type": "string",
+          "description": "HTTPS callback URL"
+         },
+         "events": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "webhookId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/health": {
+   "get": {
+    "operationId": "getHealth",
+    "summary": "Health check",
+    "description": "HTTP health check endpoint",
+    "tags": [
+     "ops"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/shipping/fees": {
+   "get": {
+    "operationId": "calculateShippingFee",
+    "summary": "Calculate shipping fee",
+    "description": "Tính phí vận chuyển",
+    "tags": [
+     "shipping"
+    ],
+    "parameters": [
+     {
+      "in": "query",
+      "name": "provinceCode",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "weightGrams",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "fee": {
+           "type": "number"
+          },
+          "carrierName": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/provinces": {
+   "get": {
+    "operationId": "listProvinces",
+    "summary": "List provinces",
+    "description": "Danh sách tỉnh thành",
+    "tags": [
+     "shipping"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "provinceCode": {
+              "type": "string"
+             },
+             "provinceName": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/promotions/validate": {
+   "post": {
+    "operationId": "validateCoupon",
+    "summary": "Validate coupon",
+    "description": "Kiểm tra mã giảm giá",
+    "tags": [
+     "promotions"
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "couponCode": {
+          "type": "string"
+         },
+         "orderTotal": {
+          "type": "number"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "discountAmount": {
+           "type": "number"
+          },
+          "valid": {
+           "type": "boolean"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/loyalty/{customerId}/points": {
+   "get": {
+    "operationId": "getLoyaltyPoints",
+    "summary": "Loyalty points balance",
+    "description": "Điểm tích lũy",
+    "tags": [
+     "customers"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "customerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "loyaltyPoints": {
+           "type": "integer"
+          },
+          "expiringPoints": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/files/upload": {
+   "post": {
+    "operationId": "uploadAttachment",
+    "summary": "Upload attachment",
+    "description": "Tải tệp đính kèm",
+    "tags": [
+     "files"
+    ],
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "fileId": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/employees/{employeeId}": {
+   "get": {
+    "operationId": "getEmployee",
+    "summary": "Get employee",
+    "description": "Thông tin nhân viên",
+    "tags": [
+     "hr"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "employeeId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "employeeId": {
+           "type": "string"
+          },
+          "fullName": {
+           "type": "string"
+          },
+          "department": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/stores": {
+   "get": {
+    "operationId": "listStores",
+    "summary": "List stores",
+    "description": "Danh sách cửa hàng",
+    "tags": [
+     "stores"
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "storeCode": {
+              "type": "string"
+             },
+             "storeName": {
+              "type": "string"
+             },
+             "openingHours": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v2/orders/{orderId}/receipt": {
+   "get": {
+    "operationId": "getReceiptV2",
+    "summary": "Get receipt (v2)",
+    "description": "Biên lai",
+    "tags": [
+     "orders"
+    ],
+    "parameters": [
+     {
+      "in": "path",
+      "name": "orderId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "receiptNumber": {
+           "type": "string"
+          },
+          "merchantReference": {
+           "type": "string"
+          },
+          "totalAmount": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "description": "error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    }
+   },
+   "Address": {
+    "type": "object",
+    "properties": {
+     "street": {
+      "type": "string"
+     },
+     "city": {
+      "type": "string"
+     },
+     "postalCode": {
+      "type": "string",
+      "description": "Mã bưu chính"
+     },
+     "provinceCode": {
+      "type": "string"
+     }
+    }
+   },
+   "OrderLine": {
+    "type": "object",
+    "properties": {
+     "sku": {
+      "type": "string"
+     },
+     "unitPrice": {
+      "type": "number",
+      "description": "Đơn giá"
+     },
+     "quantity": {
+      "type": "integer"
+     }
+    }
+   },
+   "Order": {
+    "type": "object",
+    "properties": {
+     "orderId": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "description": "Trạng thái đơn hàng"
+     },
+     "totalAmount": {
+      "type": "number"
+     },
+     "currency": {
+      "type": "string"
+     },
+     "customer": {
+      "type": "object",
+      "properties": {
+       "customerName": {
+        "type": "string",
+        "description": "Tên khách hàng"
+       },
+       "phoneNumber": {
+        "type": "string",
+        "description": "Số điện thoại"
+       }
+      }
+     },
+     "lines": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/OrderLine"
+      }
+     },
+     "shippingAddress": {
+      "$ref": "#/components/schemas/Address"
+     },
+     "trackingNumber": {
+      "type": "string",
+      "description": "Mã vận đơn"
+     }
+    }
+   },
+   "OrderInput": {
+    "type": "object",
+    "properties": {
+     "customerId": {
+      "type": "string"
+     },
+     "lines": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "sku": {
+         "type": "string"
+        },
+        "quantity": {
+         "type": "integer"
+        }
+       }
+      }
+     },
+     "shippingAddress": {
+      "$ref": "#/components/schemas/Address"
+     },
+     "couponCode": {
+      "type": "string",
+      "description": "Mã giảm giá"
+     }
+    }
+   },
+   "OrderPage": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Order"
+      }
+     },
+     "nextPage": {
+      "type": "string"
+     }
+    }
+   },
+   "Invoice": {
+    "type": "object",
+    "properties": {
+     "invoiceNumber": {
+      "type": "string",
+      "description": "Số hóa đơn"
+     },
+     "taxCode": {
+      "type": "string",
+      "description": "Mã số thuế"
+     },
+     "issueDate": {
+      "type": "string"
+     },
+     "totalAmount": {
+      "type": "number"
+     },
+     "vatRate": {
+      "type": "number",
+      "description": "Thuế suất GTGT"
+     },
+     "buyer": {
+      "type": "object",
+      "properties": {
+       "taxCode": {
+        "type": "string"
+       },
+       "companyName": {
+        "type": "string",
+        "description": "Tên công ty người mua"
+       }
+      }
+     }
+    }
+   },
+   "Customer": {
+    "type": "object",
+    "properties": {
+     "customerId": {
+      "type": "string"
+     },
+     "fullName": {
+      "type": "string"
+     },
+     "phoneNumber": {
+      "type": "string"
+     },
+     "loyaltyPoints": {
+      "type": "integer"
+     },
+     "membershipLevel": {
+      "type": "string",
+      "description": "Hạng thành viên"
+     }
+    }
+   },
+   "CustomerInput": {
+    "type": "object",
+    "properties": {
+     "fullName": {
+      "type": "string"
+     },
+     "phoneNumber": {
+      "type": "string"
+     },
+     "email": {
+      "type": "string"
+     },
+     "dateOfBirth": {
+      "type": "string"
+     }
+    }
+   },
+   "Product": {
+    "type": "object",
+    "properties": {
+     "sku": {
+      "type": "string"
+     },
+     "productName": {
+      "type": "string"
+     },
+     "unitPrice": {
+      "type": "number"
+     },
+     "stockQuantity": {
+      "type": "integer"
+     },
+     "barcode": {
+      "type": "string"
+     },
+     "eanCode": {
+      "type": "string",
+      "description": "EAN-13 barcode"
+     }
+    }
+   },
+   "Payment": {
+    "type": "object",
+    "properties": {
+     "paymentId": {
+      "type": "string"
+     },
+     "paymentStatus": {
+      "type": "string",
+      "description": "Trạng thái thanh toán"
+     },
+     "transactionRef": {
+      "type": "string"
+     },
+     "qrCodeUrl": {
+      "type": "string",
+      "description": "QR code for bank transfer"
+     }
+    }
+   },
+   "Tokens": {
+    "type": "object",
+    "properties": {
+     "accessToken": {
+      "type": "string"
+     },
+     "refreshToken": {
+      "type": "string"
+     },
+     "expiresIn": {
+      "type": "integer",
+      "description": "Seconds until the access token expires"
+     }
+    }
+   }
+  }
+ }
+}

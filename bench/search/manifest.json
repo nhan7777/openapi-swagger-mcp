@@ -1,0 +1,35 @@
+{
+  "corpusVersion": 1,
+  "frozen": "before any src/search implementation",
+  "queryCount": 210,
+  "queriesPerCategory": {
+    "exact_path": 15,
+    "exact_operation_id": 15,
+    "typo": 15,
+    "acronym": 15,
+    "vi": 15,
+    "vi_no_diacritics": 15,
+    "en": 15,
+    "cjk": 15,
+    "paraphrase_no_alias": 15,
+    "paraphrase_alias": 15,
+    "response_field": 15,
+    "nested_schema": 15,
+    "multi_service": 15,
+    "no_result": 15
+  },
+  "queriesPerSplit": {
+    "dev": 112,
+    "test": 98
+  },
+  "sha256": {
+    "queries.jsonl": "47fbc5f588aa587f99944547fa34fd429e58176e08e50da8aec7a934b24134cb",
+    "targets.json": "609e6b27c2994cc0b76c3ae2ee9c1b0f6834431805a64ad04f716e557e4cd385",
+    "aliases.json": "511c8ccf23ec5d3da80b7cc611c08676357cc3beb67c6cc6d82790dd08140549",
+    "corpus/specs/cjk.json": "7a5aed3f6dd25a4ba9b93d01603e7bcd27160bc11eb17263014b69cf6696f661",
+    "corpus/specs/crm-a.json": "f12d09228a4f86d5cc40d6c8991d17c9515504acdec5766b1d4f9be839f232f5",
+    "corpus/specs/crm-b.json": "3ffea770e154ba5102f250d880c2aa094388d34111ba47e81d7826f8c587ebef",
+    "corpus/specs/erp.json": "dabcbc887adb3ab23073ff671aaee263eb177c6f1deadc81eed452b7c51be6b0",
+    "corpus/specs/shop.json": "62d7b507ae4c4a1b28f106a823e6bab365f392a565db364d9dabd6b1c2b5da46"
+  }
+}
