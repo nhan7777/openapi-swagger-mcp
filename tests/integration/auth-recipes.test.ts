@@ -423,7 +423,7 @@ describe('MCP controls and interactive sessions', () => {
     );
     const { client, call } = await connect(h);
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(tools).toEqual(['authenticate', 'export_artifact', 'get_auth_status', 'get_operation_schema', 'invoke_operation', 'list_apis', 'manage_session', 'read_artifact', 'refresh_specs', 'search_operations']);
+    expect(tools).toEqual(['authenticate', 'export_artifact', 'get_auth_status', 'get_operation_schema', 'invoke_operation', 'list_apis', 'manage_session', 'preview_operation', 'read_artifact', 'refresh_specs', 'search_operations']);
 
     const started = await call('authenticate', { service: 'o30' });
     expect(started.data).toMatchObject({ state: 'recovering', activeAction: 'authenticate', target: { service: 'o30' } });

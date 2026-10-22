@@ -173,7 +173,7 @@ export function createServer(app: App): McpServer {
     (a) =>
       run('get_operation_schema', traceable(a), async (call) => {
         const { snapshot, operation } = lookup(call, a);
-        const contract = buildContract(snapshot, operation);
+        const contract = { ...buildContract(snapshot, operation), target: { service: a.service, baseUrl: app.cfg.services.get(a.service)!.baseUrl } };
         const body = JSON.stringify(contract);
         if (utf8Len(body) <= Math.floor(cap * 0.85)) return contract;
         const artifact = await app.artifacts.putBuffer(Buffer.from(body, 'utf8'), 'application/json', 'json', 'contract');
@@ -182,6 +182,7 @@ export function createServer(app: App): McpServer {
           operation: a.operation,
           revision: snapshot.revision,
           contractInline: false,
+          target: contract.target,
           contractArtifact: artifact,
           note: 'full contract stored as an artifact; read it with read_artifact (use pointer, e.g. /responses/200, to page through parts)',
           summary: {
@@ -193,6 +194,33 @@ export function createServer(app: App): McpServer {
           },
         };
       }),
+  );
+
+  server.registerTool(
+    'preview_operation',
+    {
+      title: 'Preview operation request',
+      description:
+        'Show the request invoke_operation would prepare for the same arguments, WITHOUT sending anything: no business request, login, refresh or spec fetch. It uses the same preparation as invoke, so invalid data is kept as-is and reported in diagnostics. ready:false lists blockers (for example missing credentials or an unavailable spec) and shows no request. Credential values are never shown, only the binding they come from. Not an approval: invoke prepares the request again and can differ if input, config, spec or auth state changed. Preview is recorded as a call in the trace, without any HTTP exchange.' +
+        UNTRUSTED,
+      inputSchema: z.object({ service: z.string(), operation: z.string(), revision: z.string(), input: RequestInputSchema.optional(), auth: AuthSchema.optional() }).strict(),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (a) =>
+      run(
+        'preview_operation',
+        // Allowlist: the agent's input (bodies, query values, headers) is never copied into the trace.
+        traceable({ service: a.service, operation: a.operation, revision: a.revision, auth: a.auth }),
+        (call) => {
+          call.setTarget(a);
+          const r = app.previewer.preview({ service: a.service, operation: a.operation, revision: a.revision, input: a.input as RequestInput | undefined, auth: a.auth });
+          const b = r.blockers[0];
+          if (b?.code === 'OPERATION_NOT_ALLOWED')
+            app.recorderForServer.policyBlocked({ callId: call.callId, service: a.service, operation: a.operation, rule: String(b.details?.rule ?? 'unknown') });
+          return r;
+        },
+        (r) => ({ isError: false, summary: { ready: r.ready, sent: false } }),
+      ),
   );
 
   server.registerTool(

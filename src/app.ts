@@ -10,6 +10,7 @@ import { Invoker } from './invoke.js';
 import { log } from './log.js';
 import { NetworkPolicy } from './policy/network.js';
 import { OperationPolicy } from './policy/operations.js';
+import { Previewer } from './preview.js';
 import { prepareRequest, type PrepareArgs, type PrepareDeps, type PrepareOutcome } from './request-prep.js';
 import { SpecLoader } from './specs/loader.js';
 import { SpecRegistry } from './specs/registry.js';
@@ -38,6 +39,8 @@ export class App {
     readonly trace: TraceReader,
     private readonly recorder: TraceStore,
     private readonly prepDeps: PrepareDeps,
+    /** Offline request preview over the same preparation as invoke. Holds no transport, artifact store or recovery. */
+    readonly previewer: Previewer,
     private readonly abort: AbortController,
   ) {}
 
@@ -62,7 +65,8 @@ export class App {
     const recovery = new RecoveryCoordinator(cfg, profiles, registry, transport, creds, artifacts, recorder, abort.signal);
     const prepDeps: PrepareDeps = { cfg, registry, profiles, sessions, diagnostics: new Diagnostician(), network: networkPolicy };
     const invoker = new Invoker(cfg, prepDeps, transport, sessions, recovery, artifacts, abort.signal, recorder);
-    const app = new App(cfg, transport, registry, creds, profiles, sessions, recovery, artifacts, invoker, operationPolicy, networkPolicy, recorder, recorder, prepDeps, abort);
+    const previewer = new Previewer((args) => prepareRequest(prepDeps, args), cfg.limits.toolOutputBytes);
+    const app = new App(cfg, transport, registry, creds, profiles, sessions, recovery, artifacts, invoker, operationPolicy, networkPolicy, recorder, recorder, prepDeps, previewer, abort);
     await registry.init();
     log.info('started', { services: cfg.services.size, ready: registry.states().filter((s) => s.state === 'ready').length });
     return app;

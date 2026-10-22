@@ -11,7 +11,7 @@ import { classifyNetworkError, discard, timeoutSignal, type PreparedRequest, typ
 import { log } from './log.js';
 import { boundHeaders } from './trace/observe.js';
 import type { CallId, CallScope, ExchangeScope, ObservedField, ObservedInput, RequestId, RequestObservation, TraceRecorder } from './trace/types.js';
-import { prepareRequest, type Blocker, type PrepareDeps, type PreparedInvocation } from './request-prep.js';
+import { prepareRequest, type Blocker, type PrepareDeps, type PreparedInvocation, type Target } from './request-prep.js';
 import type { AuthSelector, CaptureSpec } from './schemas.js';
 import type { Snapshot } from './specs/loader.js';
 import type { Operation } from './specs/model.js';
@@ -45,6 +45,8 @@ export interface InvokeResult {
   service: string;
   operation: string;
   specRevision: string;
+  /** Where the request goes (configured service and baseUrl). Absent when the service id is unknown. */
+  target?: Target;
   /** False only when no request bytes can have left the process. */
   sent: boolean;
   http?: { status: number; headers: Record<string, string | string[]>; headersTruncated?: boolean; redirects: RedirectHop[] };
@@ -127,6 +129,7 @@ export class Invoker {
       service: args.service,
       operation: args.operation,
       specRevision: args.revision,
+      ...(this.cfg.services.get(args.service) ? { target: { service: args.service, baseUrl: this.cfg.services.get(args.service)!.baseUrl } } : {}),
       sent: false,
       diagnostics: { request: NOT_AVAILABLE, response: NOT_AVAILABLE },
       timingMs: 0,

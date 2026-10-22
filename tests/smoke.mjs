@@ -162,7 +162,7 @@ try {
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
   assert.deepEqual(tools, [
     'authenticate', 'export_artifact', 'get_auth_status', 'get_operation_schema',
-    'invoke_operation', 'list_apis', 'manage_session', 'read_artifact', 'refresh_specs', 'search_operations',
+    'invoke_operation', 'list_apis', 'manage_session', 'preview_operation', 'read_artifact', 'refresh_specs', 'search_operations',
   ]);
 
   const apis = await call('list_apis', {});
@@ -193,6 +193,14 @@ try {
 
   const schema = await call('get_operation_schema', { service: 'smoke', operation: 'GET /widgets/{id}', revision });
   assert.equal(schema.data.parameters[0].name, 'id');
+
+  // ---- preview: same preparation as invoke, nothing reaches the backend
+  const preview = await call('preview_operation', { service: 'smoke', operation: 'GET /widgets/{id}', revision, input: { path: { id: 7 } }, auth: { mode: 'anonymous' } });
+  assert.equal(preview.isError, false);
+  assert.equal(preview.data.sent, false);
+  assert.equal(preview.data.ready, true);
+  assert.ok(preview.data.request.url.endsWith('/widgets/7'), 'preview shows the URL invoke will use');
+  assert.deepEqual(requests, [], 'preview must not reach the backend');
 
   const inv = await call('invoke_operation', { service: 'smoke', operation: 'GET /widgets/{id}', revision, input: { path: { id: 7 } }, auth: { mode: 'anonymous' } });
   assert.equal(inv.isError, false);
@@ -230,6 +238,11 @@ try {
   const early = await call('invoke_operation', meOp);
   assert.equal(early.data.sent, false);
   assert.equal(early.data.error.code, 'AUTH_REQUIRED');
+  const blockedPreview = await call('preview_operation', meOp);
+  assert.equal(blockedPreview.data.ready, false);
+  assert.equal(blockedPreview.data.blockers[0].code, 'AUTH_REQUIRED');
+  assert.equal(blockedPreview.data.request, undefined, 'no request is shown when auth is missing');
+  assert.deepEqual(requests, ['GET /widgets/7'], 'preview of a blocked call must not reach the backend');
 
   const started = await call('authenticate', { service: 'smoke' });
   assert.equal(started.data.activeAction, 'authenticate');
@@ -290,7 +303,7 @@ try {
   assert.deepEqual(runs.map((r) => [r.trigger, r.action]), [['explicit', 'authenticate'], ['explicit', 'refresh']]);
   assert.deepEqual(events.filter((e) => e.t === 'auth.end').map((e) => e.outcome), ['published', 'published']);
   const tracedTools = events.filter((e) => e.t === 'call.start').map((e) => e.tool);
-  assert.ok(['list_apis', 'search_operations', 'get_operation_schema', 'invoke_operation', 'read_artifact', 'export_artifact', 'authenticate', 'get_auth_status'].every((t) => tracedTools.includes(t)), `tool calls missing from the trace: ${tracedTools}`);
+  assert.ok(['list_apis', 'search_operations', 'get_operation_schema', 'preview_operation', 'invoke_operation', 'read_artifact', 'export_artifact', 'authenticate', 'get_auth_status'].every((t) => tracedTools.includes(t)), `tool calls missing from the trace: ${tracedTools}`);
 
   // Tokens are never in the trace or the artifact metadata, but the raw login response is a readable local artifact.
   const metadata = fs.readFileSync(path.join(sdir, 'artifacts.jsonl'), 'utf8');
