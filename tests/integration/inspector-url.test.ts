@@ -24,12 +24,12 @@ const sink = () => {
 };
 const tokenUrl = (port: number) => `http://127.0.0.1:${port}/#t=${randomBytes(32).toString('base64url')}`;
 
-function project(name = 'c.json') {
+function project(name = 'c.json', opts: { enabled?: boolean } = {}) {
   const dir = tmpDir('oasm-iu-');
   dirs.push(dir);
   const artifactRoot = path.join(dir, 'artifacts');
   const configPath = path.join(dir, name);
-  fs.writeFileSync(configPath, JSON.stringify({ services: { a: { baseUrl: 'http://127.0.0.1:9', spec: 'spec.json' } }, files: { artifactRoot } }));
+  fs.writeFileSync(configPath, JSON.stringify({ services: { a: { baseUrl: 'http://127.0.0.1:9', spec: 'spec.json' } }, files: { artifactRoot }, inspector: { enabled: opts.enabled ?? true } }));
   return { dir, artifactRoot, configPath };
 }
 
@@ -78,6 +78,15 @@ describe.skipIf(process.platform === 'win32')('--inspector-url', () => {
     expect(r.out).toBe(`${s.url}\n`);
     expect(r.err).toBe('');
     expect(snapshot(p.artifactRoot)).toBe(before);
+  });
+
+  test('inspector disabled in the config: exit 1 with INSPECTOR_DISABLED, nothing printed', async () => {
+    const p = project('c.json', { enabled: false });
+    await session(p, { id: 's-off1', pid: process.pid });
+    const r = await run(p);
+    expect(r.code).toBe(1);
+    expect(r.out).toBe('');
+    expect(r.err).toContain('INSPECTOR_DISABLED');
   });
 
   test('no artifact root: exit 1, nothing printed, the directory is not created', async () => {

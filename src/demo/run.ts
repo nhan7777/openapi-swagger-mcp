@@ -8,6 +8,7 @@ import { serve } from '../serve.js';
 import { errorInfo } from '../util.js';
 import { startDemoBackend } from './backend.js';
 import { writeDemoProject } from './project.js';
+import { shellQuote } from '../onboarding/clients.js';
 
 export const DEMO_USAGE = 'usage: openapi-swagger-mcp demo [--dir <new or empty directory>]';
 
@@ -54,6 +55,7 @@ export async function runDemo(argv: string[]): Promise<number> {
       `demo config: ${configPath}${ownsDir ? ' (removed when the demo exits)' : ' (kept)'}`,
       'services: demo-shop (anonymous), demo-account (login + refresh; call authenticate first)',
       'This backend has no real authentication: other local processes can reach it while the demo runs.',
+      `inspector: enabled. To get its URL (it contains a secret token) run in another terminal: openapi-swagger-mcp --config ${shellQuote(configPath)} --inspector-url`,
       '',
     ].join('\n'),
   );

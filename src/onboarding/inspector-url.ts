@@ -10,6 +10,10 @@ import { errorInfo } from '../util.js';
  * Exit codes: 0 at least one URL printed, 1 none running or discovery failed.
  */
 export async function runInspectorUrl(cfg: AppConfig, out: NodeJS.WritableStream, err: NodeJS.WritableStream): Promise<number> {
+  if (!cfg.inspector.enabled) {
+    err.write('INSPECTOR_DISABLED: the inspector is off in this config (inspector.enabled is not true)\n');
+    return 1;
+  }
   let found;
   try {
     found = await discoverInspectors({ artifactRoot: cfg.files.artifactRoot, configPath: cfg.configPath });

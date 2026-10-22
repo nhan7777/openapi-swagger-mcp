@@ -31,6 +31,8 @@ export function demoConfig(origin: string, creds: DemoCredentials): Record<strin
       },
     },
     files: { artifactRoot: './artifacts' },
+    // Read-only, loopback only. The token is never printed by the demo; `--inspector-url` prints it on request.
+    inspector: { enabled: true },
   };
 }
 
