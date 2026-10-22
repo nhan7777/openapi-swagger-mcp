@@ -454,6 +454,49 @@
       },
       "additionalProperties": false
     },
+    "inspector": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "host": {
+          "default": "127.0.0.1",
+          "type": "string",
+          "enum": [
+            "127.0.0.1",
+            "::1"
+          ]
+        },
+        "port": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "pageBytes": {
+          "default": 16384,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1048576
+        },
+        "formatMaxBytes": {
+          "default": 1048576,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16777216
+        },
+        "timelineLimit": {
+          "default": 200,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 200
+        }
+      },
+      "additionalProperties": false
+    },
     "search": {
       "default": {},
       "type": "object",

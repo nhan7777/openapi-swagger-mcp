@@ -249,6 +249,23 @@ const Service = z.union([
     .strict(),
 ]);
 
+/** Optional local request inspector: read-only, loopback only, off by default. */
+export const InspectorSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    /** Loopback only: `0.0.0.0` and `::` are not accepted. */
+    host: z.enum(['127.0.0.1', '::1']).default('127.0.0.1'),
+    /** 0 picks a free port. */
+    port: z.number().int().min(0).max(65535).default(0),
+    /** Largest raw/text page. Capped at `limits.artifactPageBytes` at run time. */
+    pageBytes: posInt(16384, 1 * MiB),
+    /** Largest JSON body the formatted view will pretty-print. */
+    formatMaxBytes: posInt(1 * MiB, 16 * MiB),
+    timelineLimit: posInt(200, 200),
+  })
+  .strict()
+  .prefault({});
+
 export const ConfigSchema = z
   .object({
     $schema: z.string().optional(),
@@ -293,6 +310,8 @@ export const ConfigSchema = z
     /** Outbound destinations. Absent: only the destinations derived from `services` are reachable. */
     network: z.object({ allow: z.array(OriginSchema).min(1) }).strict().optional(),
     trace: z.object({ enabled: z.boolean().default(true) }).strict().prefault({}),
+    /** Local request inspector (off unless `enabled: true`). */
+    inspector: InspectorSchema,
     /** Search aliases and index limits. */
     search: SearchSchema,
   })

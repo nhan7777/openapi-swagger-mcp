@@ -56,6 +56,7 @@ const positive: Array<[string, unknown]> = [
   ['trace off and retention', { trace: { enabled: false }, files: { retention: { keepOnExit: true, crashedSessionMaxAgeHours: 24, maxRetainedBytes: 1048576 } }, ...svc({}) }],
   ['trace limits', { limits: { traceBytes: 8388608, traceSegmentBytes: 1048576, traceEventBytes: 65536, traceMaxOpenRecords: 64, maxArtifacts: 100 }, ...svc({}) }],
   ['search aliases and limits', { search: { aliases: [{ terms: ['đơn hàng', 'order'], services: ['a'] }], limits: { schemaDepth: 4, indexBudgetBytes: 1048576 } }, ...svc({}) }],
+  ['inspector enabled with options', { inspector: { enabled: true, host: '::1', port: 0, pageBytes: 8192, formatMaxBytes: 524288, timelineLimit: 100 }, ...svc({}) }],
 ];
 
 const negative: Array<[string, unknown]> = [
@@ -114,6 +115,11 @@ const negative: Array<[string, unknown]> = [
   ['alias group of one phrase', { search: { aliases: [{ terms: ['only'] }] }, ...svc({}) }],
   ['unknown search key', { search: { semantic: true }, ...svc({}) }],
   ['search limit above its maximum', { search: { limits: { termBytes: 100000 } }, ...svc({}) }],
+  ['inspector bound to all interfaces', { inspector: { enabled: true, host: '0.0.0.0' }, ...svc({}) }],
+  ['inspector bound to the IPv6 wildcard', { inspector: { host: '::' }, ...svc({}) }],
+  ['inspector timeline limit above 200', { inspector: { timelineLimit: 201 }, ...svc({}) }],
+  ['inspector port out of range', { inspector: { port: 70000 }, ...svc({}) }],
+  ['unknown inspector key', { inspector: { enabled: true, allowRemote: true }, ...svc({}) }],
 ];
 
 describe('JSON Schema and loadConfig agree on structure', () => {

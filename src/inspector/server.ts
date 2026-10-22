@@ -45,6 +45,8 @@ export interface InspectorHandle {
 
 const MAX_CONNECTIONS = 32;
 const MAX_CONCURRENT_BODY = 4;
+/** Largest JSON metadata reply. Over this the server answers 413 OUTPUT_TOO_LARGE; it never truncates silently. Body pages have their own budget. */
+const META_BUDGET_BYTES = 512 * 1024;
 const DEFAULT_LIMIT = 50;
 const PURPOSES: Record<ExchangePurpose, true> = { business: true, auth_recipe: true, spec_root: true, spec_ref: true };
 const SEND_STATES: Record<SendState, true> = { not_sent: true, in_flight: true, response_received: true, maybe_sent: true };
@@ -64,8 +66,10 @@ class HttpError extends Error {
 interface Reply {
   status: number;
   body: unknown;
+  /** Serialized size cap for this reply; defaults to META_BUDGET_BYTES. */
+  budget?: number;
 }
-const ok = (body: unknown): Reply => ({ status: 200, body });
+const ok = (body: unknown, budget?: number): Reply => ({ status: 200, body, ...(budget !== undefined ? { budget } : {}) });
 
 function mapError(e: unknown): { status: number; code: string; message: string } {
   if (e instanceof HttpError) return { status: e.status, code: e.code, message: e.message };
@@ -116,6 +120,8 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
   const traceSessionId = path.basename(sessionDir);
   const inflight = new Set<Promise<unknown>>();
   let busy = 0;
+  /** Set when close() starts: requests on still-open keep-alive connections are refused instead of reaching a closing artifact store. */
+  let stopping = false;
 
   const server = http.createServer({ maxHeaderSize: 16384 });
   server.headersTimeout = 10_000;
@@ -123,13 +129,14 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
   server.keepAliveTimeout = 5_000;
   server.maxConnections = MAX_CONNECTIONS;
 
-  const listening = Promise.withResolvers<void>();
-  server.once('error', listening.reject);
-  server.listen({ host: opts.host, port: opts.port, exclusive: true }, () => {
-    server.off('error', listening.reject);
-    listening.resolve();
+  // Executor form: the src tsconfig targets ES2023, which has no Promise.withResolvers.
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen({ host: opts.host, port: opts.port, exclusive: true }, () => {
+      server.off('error', reject);
+      resolve();
+    });
   });
-  await listening.promise;
   const addr = server.address() as AddressInfo;
   const bound = addr.address === '::1' ? '::1' : addr.address === '127.0.0.1' ? '127.0.0.1' : undefined;
   if (bound === undefined) {
@@ -193,7 +200,9 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     if (view !== 'raw' && view !== 'text' && view !== 'formatted') throw new HttpError(400, 'QUERY_INVALID', 'view must be raw, text or formatted');
     const offset = int(q, 'offset', 0, 0, Number.MAX_SAFE_INTEGER);
     const limit = int(q, 'limit', pageBytes, 1, pageBytes);
-    return ok(await withBodySlot(() => (view === 'formatted' ? formattedPage(artifactId, offset, limit) : rawPage(artifactId, view, offset, limit))));
+    // Worst case of a text page: base64 of the bytes (4/3) plus up to 8 characters per escaped byte.
+    const bodyBudget = pageBytes * 10 + 4096;
+    return ok(await withBodySlot(() => (view === 'formatted' ? formattedPage(artifactId, offset, limit) : rawPage(artifactId, view, offset, limit))), bodyBudget);
   }
 
   // ---- lookups ---------------------------------------------------------------------------------------------
@@ -345,10 +354,22 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': type, 'content-length': buf.length, ...extra });
     res.end(buf);
   }
-  const sendJson = (res: http.ServerResponse, status: number, body: unknown, extra?: Record<string, string>): void =>
-    send(res, status, 'application/json; charset=utf-8', JSON.stringify(body), extra);
+  const sendJson = (res: http.ServerResponse, status: number, body: unknown, extra?: Record<string, string>, budget = META_BUDGET_BYTES): void => {
+    const text = JSON.stringify(body);
+    if (Buffer.byteLength(text, 'utf8') > budget) {
+      const err: ErrorDto = { error: { code: 'OUTPUT_TOO_LARGE', message: `reply exceeds the ${budget} byte limit; use the paged body views for large content` } };
+      send(res, 413, 'application/json; charset=utf-8', JSON.stringify(err), extra);
+      return;
+    }
+    send(res, status, 'application/json; charset=utf-8', text, extra);
+  };
 
   server.on('request', (req, res) => {
+    if (stopping) {
+      const err: ErrorDto = { error: { code: 'INSPECTOR_STOPPING', message: 'inspector is shutting down' } };
+      sendJson(res, 503, err, { connection: 'close' });
+      return;
+    }
     const g = checkRequest(req, guard);
     if (!g.ok) {
       const err: ErrorDto = { error: { code: `HTTP_${g.status}`, message: 'request refused' } };
@@ -361,7 +382,7 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
       return;
     }
     route(g.path, g.query).then(
-      (r) => sendJson(res, r.status, r.body),
+      (r) => sendJson(res, r.status, r.body, undefined, r.budget),
       (e: unknown) => {
         const m = mapError(e);
         if (m.status === 500) log.error('inspector request failed', { code: m.code });
@@ -380,10 +401,10 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
   try {
     await writeDescriptor(sessionDir, { schema: 1, url, pid: process.pid, startedAt: new Date().toISOString(), traceSessionId, configPath: deps.configPath, host: bound, port });
   } catch (e) {
-    const stopped = Promise.withResolvers<void>();
-    server.close(() => stopped.resolve());
-    server.closeAllConnections();
-    await stopped.promise;
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
     throw e;
   }
   log.info('inspector listening', { port }); // no token, no URL
@@ -395,16 +416,19 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     port,
     close(): Promise<void> {
       closing ??= (async () => {
+        stopping = true;
         await removeDescriptor(sessionDir).catch(() => undefined);
-        const stopped = Promise.withResolvers<void>();
-        server.close(() => stopped.resolve());
+        const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
         server.closeIdleConnections();
         // Let bounded body reads finish before the artifact store is closed; then drop whatever is left.
-        const grace = Promise.withResolvers<void>();
-        setTimeout(grace.resolve, 2000).unref();
-        await Promise.race([Promise.allSettled([...inflight]), grace.promise]);
+        let timer: NodeJS.Timeout | undefined;
+        const grace = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 2000);
+        });
+        await Promise.race([Promise.allSettled([...inflight]), grace]);
+        clearTimeout(timer);
         server.closeAllConnections();
-        await stopped.promise;
+        await stopped;
       })();
       return closing;
     },

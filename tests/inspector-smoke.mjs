@@ -218,8 +218,11 @@ try {
   assert.ok(exch.some((x) => x.label === 'auth_recipe'), 'login/refresh exchanges are visible');
   const e401 = exch.find((x) => x.status === 401);
   assert.ok(e401, 'the 401 exchange is visible');
-  const refreshEx = exch.find((x) => x.label === 'auth_recipe' && x.parentId === e401.id);
-  assert.ok(refreshEx, 'refresh is linked to the 401 that triggered it');
+  const refreshEx = exch.find((x) => x.label === 'auth_recipe' && x.pathDisplay?.endsWith('/session/refresh'));
+  assert.ok(refreshEx?.authRunId, 'the refresh recipe exchange belongs to an auth run');
+  const refreshRun = (await api(`/api/auth-runs/${refreshEx.authRunId}`)).json;
+  assert.equal(refreshRun.parentId, e401.id, 'the refresh run is linked to the 401 exchange that triggered it');
+  assert.equal(refreshRun.trigger, 'unauthorized');
   assert.equal((await api('/api/exchanges?status=401')).json.items.length, 1, 'filter applies before pagination');
   const redirects = exch.filter((x) => x.relation === 'redirect');
   assert.equal(redirects.length, 1, 'redirect hop is its own exchange with a parent');
