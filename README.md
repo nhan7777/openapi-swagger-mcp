@@ -924,6 +924,14 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.2 demo
 
 The backend has no real authentication, so other processes on your machine can reach it while the demo runs. The temporary directory is deleted on exit. `--dir <path>` uses a new or empty directory instead and keeps it.
 
+The demo turns the local request inspector on. It is read-only, listens on loopback only and needs a token, which the demo never prints. To open it, run this in another terminal (the demo prints the exact command with its config path on stderr):
+
+```bash
+npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /path/printed/by/the/demo/config.json --inspector-url
+```
+
+`--inspector-url` reads the session's descriptor from the configured artifact directory, checks that it belongs to this config and to a running process, and prints one URL per line on stdout. The URL contains the secret token, so treat it like a password: keep it out of shell history, screenshots and chat. The command starts no server, creates nothing and exits `1` with `INSPECTOR_DISABLED` or `INSPECTOR_NOT_RUNNING` when there is nothing to open. In the timeline, `preview_operation` appears as a call without any HTTP exchange, while `invoke_operation` shows the exchange that was actually sent.
+
 ## Tool reference
 
 | Tool | Use it to |
