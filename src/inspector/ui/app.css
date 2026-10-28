@@ -11,8 +11,9 @@
   --surface-raised: #f1f5f9;
   --surface-hover: #e2e8f0;
   --surface-selected: #e0f2fe;
-  --accent: #0284c7;
-  --accent-bg: rgba(2, 132, 199, 0.12);
+  --accent: #0369a1;
+  --on-accent: #ffffff;
+  --accent-bg: rgba(3, 105, 161, 0.12);
   --ok: #15803d;
   --ok-bg: rgba(21, 128, 61, 0.12);
   --warn: #b45309;
@@ -40,6 +41,7 @@
     --surface-hover: #1e293b;
     --surface-selected: #112846;
     --accent: #38bdf8;
+    --on-accent: #04121f;
     --accent-bg: rgba(56, 189, 248, 0.15);
     --ok: #4ade80;
     --ok-bg: rgba(74, 222, 128, 0.15);
@@ -68,6 +70,7 @@
   --surface-hover: #1e293b;
   --surface-selected: #112846;
   --accent: #38bdf8;
+  --on-accent: #04121f;
   --accent-bg: rgba(56, 189, 248, 0.15);
   --ok: #4ade80;
   --ok-bg: rgba(74, 222, 128, 0.15);
@@ -181,12 +184,13 @@ code, pre, .mono {
   color: var(--muted);
 }
 
-.theme-switcher button:hover {
+.theme-switcher button:hover:not(:disabled) {
   color: var(--fg);
   background: var(--surface-hover);
 }
 
-.theme-switcher button[aria-pressed="true"] {
+.theme-switcher button[aria-pressed="true"],
+.theme-switcher button[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--accent-bg);
   color: var(--accent);
 }
@@ -400,7 +404,7 @@ button {
   transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-button:hover:not(:disabled) {
+button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-selected="true"]) {
   background: var(--surface-hover);
 }
 
@@ -410,9 +414,11 @@ button:disabled {
 }
 
 button[aria-pressed="true"],
-button[aria-selected="true"] {
+button[aria-selected="true"],
+button[aria-pressed="true"]:hover:not(:disabled),
+button[aria-selected="true"]:hover:not(:disabled) {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
