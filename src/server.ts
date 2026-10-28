@@ -5,6 +5,7 @@ import type { ProfileRuntime } from './auth/profiles.js';
 import { AuthSchema, CaptureSchema, CookieImportSchema, ImportedComponentSchema, RequestInputSchema, SourceComponentSchema } from './schemas.js';
 import type { ServiceConfig } from './config.js';
 import { fitServiceListing, type ListedService } from './listing.js';
+import { getInspectorDiscovery } from './inspector/discovery.js';
 import { pkg } from './pkg.js';
 import { buildContract } from './specs/contract.js';
 import { SearchEngine } from './search/engine.js';
@@ -52,7 +53,15 @@ export function createServer(app: App): McpServer {
       hasRefresh: st.hasRefresh,
     };
   };
-  const server = new McpServer({ name: pkg.name, version: pkg.version });
+  const discovery = getInspectorDiscovery(app);
+  const server = new McpServer(
+    { name: pkg.name, version: pkg.version },
+    {
+      instructions:
+        'Call list_apis first. Its session field identifies this MCP process and its Request Inspector status. When helping a user inspect requests, report this status and show the urlCommand as a local command to run. The command prints a secret-bearing URL: do not run it into the conversation or copy its output into chat. This identifies the MCP process, not the client conversation. Session discovery: ' +
+        JSON.stringify(discovery),
+    },
+  );
 
   /** What a handler's result adds to the trace call record. */
   interface CallOutcome {
@@ -99,7 +108,7 @@ export function createServer(app: App): McpServer {
     {
       title: 'List configured APIs',
       description:
-        'List the configured services with spec readiness, spec revision, operation counts and sanitized load errors. Call this first; revisions returned by search/schema tools must be passed back to invoke_operation.',
+        'List the configured services with spec readiness, spec revision, operation counts and sanitized load errors. Call this first; revisions returned by search/schema tools must be passed back to invoke_operation. Also returns this MCP process\'s session identity, Inspector status and local URL-discovery command; the command does not start a server.',
       inputSchema: z.object({}).strict(),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -110,14 +119,17 @@ export function createServer(app: App): McpServer {
           return { ...s, baseUrl: svc.baseUrl, auth: authSummary(svc) };
         });
         const threshold = Math.floor(cap * 0.85);
-        const inline = fitServiceListing(full, threshold);
-        if (inline) return { services: inline };
+        // `,"session":{...}` joins the top-level object: the new property plus its separating comma.
+        const sessionOverhead = utf8Len(JSON.stringify({ session: discovery })) - 2 + 1;
+        const inline = fitServiceListing(full, threshold - sessionOverhead);
+        if (inline) return { services: inline, session: discovery };
         // Even the metadata alone is over budget: keep the complete listing, warnings included, in an artifact.
         const artifact = await app.artifacts.putBuffer(Buffer.from(JSON.stringify({ services: full }), 'utf8'), 'application/json', 'json', 'listing');
         return {
           servicesInline: false,
           serviceCount: full.length,
           servicesArtifact: artifact,
+          session: discovery,
           note: 'the service listing is stored as an artifact; read it with read_artifact',
         };
       }),

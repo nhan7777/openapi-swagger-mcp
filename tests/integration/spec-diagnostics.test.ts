@@ -177,6 +177,7 @@ describe('list_apis stays callable with many noisy services', () => {
     expect(listed.isError).toBe(false);
     expect(listed.data).toMatchObject({ servicesInline: false, serviceCount: 30 });
     expect(listed.bytes).toBeLessThanOrEqual(8000);
+    expect(listed.data.session).toMatchObject({ sessionId: expect.stringMatching(/^s-/), inspector: { state: 'disabled' } });
     const all = await fetchAll();
     expect(all).toHaveLength(30);
     const noisy = all.filter((s) => s.serviceId.startsWith('w'));

@@ -7,6 +7,8 @@
 // Only the DESCRIPTOR PATH is printed, never the URL or token: open the file (mode 0600) to get the URL.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import net from 'node:net';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -95,9 +97,7 @@ const spec = {
 fs.writeFileSync(path.join(tmp, 'spec.json'), JSON.stringify(spec));
 const artifactRoot = path.join(tmp, 'artifacts');
 const configPath = path.join(tmp, 'config.json');
-fs.writeFileSync(
-  configPath,
-  JSON.stringify({
+const baseConfig = {
     version: 1,
     services: {
       smoke: {
@@ -116,9 +116,8 @@ fs.writeFileSync(
       },
     },
     files: { artifactRoot },
-    inspector: { enabled: true },
-  }),
-);
+};
+fs.writeFileSync(configPath, JSON.stringify({ ...baseConfig, inspector: { enabled: true } }));
 
 const transport = new StdioClientTransport({ command: process.execPath, args: [cli, '--config', configPath], env: { ...process.env, SMOKE_GRANT: 'smoke-grant' }, stderr: 'pipe' });
 let stderr = '';
@@ -143,6 +142,22 @@ const settled = async () => {
     await tick(20);
   }
   throw new Error('auth recipe did not settle');
+};
+
+// Extra real MCP processes (same SDK client over stdio) for the multi-session / disabled / unavailable cases.
+const extras = [];
+const secrets = [];
+const startExtra = async (cfgPath) => {
+  const t = new StdioClientTransport({ command: process.execPath, args: [cli, '--config', cfgPath], env: { ...process.env, SMOKE_GRANT: 'smoke-grant' }, stderr: 'pipe' });
+  const h = { client: new Client({ name: 'inspector-smoke-extra', version: '0.0.0' }), err: '' };
+  t.stderr?.on('data', (c) => (h.err += c));
+  extras.push(h);
+  await h.client.connect(t);
+  const r = await h.client.callTool({ name: 'list_apis', arguments: {} });
+  h.listText = r.content[0].text;
+  h.session = JSON.parse(h.listText).session;
+  h.instructions = h.client.getInstructions() ?? '';
+  return h;
 };
 
 /** Raw HTTP so Host/Origin can be chosen freely. */
@@ -201,6 +216,65 @@ try {
     const r = await hit(insp, p, { headers: { 'x-inspector-token': token }, ...extra });
     return { ...r, json: r.headers['content-type']?.startsWith('application/json') ? JSON.parse(r.body.toString('utf8')) : undefined };
   };
+
+  // ---- session discovery: initialization instructions + list_apis name this process and how to get its URL locally
+  const instructions = client.getInstructions();
+  const disc = apis.data.session;
+  assert.equal(typeof instructions, 'string');
+  assert.ok(instructions.includes('list_apis') && instructions.includes(JSON.stringify(disc)), 'instructions carry the same discovery object');
+  assert.equal(disc.sessionId, sessionDir);
+  assert.equal(disc.inspector.state, 'running');
+  assert.equal(disc.inspector.urlCommand.command, process.execPath);
+  assert.ok(disc.inspector.urlCommand.args[0].endsWith('cli.js'));
+  assert.deepEqual(disc.inspector.urlCommand.args.slice(1), ['--config', configPath, '--inspector-url', '--session', sessionDir]);
+  const runUrlCommand = (d) => spawnSync(d.inspector.urlCommand.command, d.inspector.urlCommand.args, { encoding: 'utf8', timeout: 15000, input: '' });
+  const first = runUrlCommand(disc);
+  assert.equal(first.status, 0);
+  assert.equal(first.stdout, `${found[0].url}\n`, 'urlCommand resolves exactly this process descriptor');
+  assert.equal(first.stderr, '');
+  assert.equal((await api('/api/meta')).json.traceSessionId, disc.sessionId, 'the inspector reached through the command belongs to this session');
+
+  // a second real MCP process with the same config gets its own identity and its own URL
+  const second = await startExtra(configPath);
+  assert.notEqual(second.session.sessionId, disc.sessionId);
+  const both = await discoverInspectors({ artifactRoot, configPath });
+  assert.equal(both.length, 2);
+  const urlOf = (id) => both.find((f) => f.traceSessionId === id).url;
+  const secondRun = runUrlCommand(second.session);
+  assert.equal(secondRun.stdout, `${urlOf(second.session.sessionId)}\n`);
+  assert.equal(runUrlCommand(disc).stdout, `${urlOf(disc.sessionId)}\n`);
+  secrets.push(...both.map((f) => new URL(f.url).hash.slice(3)));
+  await second.client.close();
+  let secondGone = false;
+  for (let i = 0; i < 100 && !secondGone; i++) {
+    const r = runUrlCommand(second.session);
+    if (r.status !== 0) {
+      assert.equal(r.stdout, '', 'a closed session never resolves to another session');
+      secondGone = true;
+    } else await tick(50);
+  }
+  assert.ok(secondGone, 'closed session stops resolving');
+  assert.equal(runUrlCommand(disc).stdout, `${urlOf(disc.sessionId)}\n`, 'first session unaffected');
+
+  // disabled: explicit state, no command
+  const offConfig = path.join(tmp, 'config-off.json');
+  fs.writeFileSync(offConfig, JSON.stringify({ ...baseConfig, inspector: { enabled: false } }));
+  const off = await startExtra(offConfig);
+  assert.deepEqual(off.session.inspector, { state: 'disabled' });
+  assert.ok(off.instructions.includes('"state":"disabled"') && !off.instructions.includes('"urlCommand"'));
+
+  // unavailable: the configured port is taken; MCP still serves list_apis
+  const blocker = net.createServer();
+  await new Promise((r) => blocker.listen(0, '127.0.0.1', r));
+  try {
+    const busyConfig = path.join(tmp, 'config-busy.json');
+    fs.writeFileSync(busyConfig, JSON.stringify({ ...baseConfig, inspector: { enabled: true, port: blocker.address().port } }));
+    const busy = await startExtra(busyConfig);
+    assert.deepEqual(busy.session.inspector, { state: 'unavailable' });
+    assert.ok(!busy.instructions.includes('"urlCommand"'));
+  } finally {
+    await new Promise((r) => blocker.close(() => r()));
+  }
 
   // ---- security
   assert.equal((await hit(insp, '/api/status')).status, 401, 'no token');
@@ -284,6 +358,8 @@ try {
   // ---- no secrets in stderr or any MCP result
   assert.ok(!stderr.includes(token) && !stderr.includes('#t='), 'token leaked to stderr');
   assert.ok(!mcpResults.some((t) => t.includes(token) || t.includes('#t=')), 'token leaked to an MCP result');
+  const surfaces = [instructions, stderr, ...mcpResults, ...extras.flatMap((h) => [h.instructions, h.listText, h.err])];
+  for (const s of surfaces) assert.ok(!s.includes('#t=') && !secrets.some((t) => s.includes(t)), 'token leaked to instructions, a list_apis result or stderr');
   for (const s of ['AT-1', 'AT-2', 'RT-1', 'smoke-grant', 'AGENT-HEADER-KEY']) assert.ok(!stderr.includes(s), `${s} leaked to stderr`);
 
   console.log(`inspector smoke checks passed (descriptor ${descriptorPath})`);
@@ -345,6 +421,7 @@ try {
 } finally {
   for (const respond of heldResponses.splice(0)) respond();
   await client.close().catch(() => undefined);
+  for (const h of extras) await h.client.close().catch(() => undefined);
   await new Promise((r) => backend.close(r));
   await new Promise((r) => canary.close(r));
   if (descriptorPath) assert.equal(fs.existsSync(descriptorPath), false, 'descriptor removed on close');

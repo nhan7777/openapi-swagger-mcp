@@ -9,7 +9,16 @@ import { errorInfo } from '../util.js';
  * file mode and liveness belongs to P3's `discoverInspectors`.
  * Exit codes: 0 at least one URL printed, 1 none running or discovery failed.
  */
-export async function runInspectorUrl(cfg: AppConfig, out: NodeJS.WritableStream, err: NodeJS.WritableStream): Promise<number> {
+export async function runInspectorUrl(
+  cfg: AppConfig,
+  out: NodeJS.WritableStream,
+  err: NodeJS.WritableStream,
+  sessionId?: string,
+): Promise<number> {
+  if (sessionId !== undefined && !/^s-[A-Za-z0-9]+$/.test(sessionId)) {
+    err.write('INVALID_SESSION: expected an s- prefixed alphanumeric session id\n');
+    return 2;
+  }
   if (!cfg.inspector.enabled) {
     err.write('INSPECTOR_DISABLED: the inspector is off in this config (inspector.enabled is not true)\n');
     return 1;
@@ -21,8 +30,13 @@ export async function runInspectorUrl(cfg: AppConfig, out: NodeJS.WritableStream
     err.write(`INSPECTOR_DISCOVERY_FAILED: ${errorInfo(e).code}\n`);
     return 1;
   }
+  if (sessionId !== undefined) found = found.filter((f) => f.traceSessionId === sessionId);
   if (found.length === 0) {
-    err.write('INSPECTOR_NOT_RUNNING: no running inspector found for this config. Start the MCP server (or the demo) with the inspector enabled, then run this command again.\n');
+    err.write(
+      sessionId !== undefined
+        ? 'INSPECTOR_NOT_RUNNING: no running inspector found for the requested session and config.\n'
+        : 'INSPECTOR_NOT_RUNNING: no running inspector found for this config. Start the MCP server (or the demo) with the inspector enabled, then run this command again.\n',
+    );
     return 1;
   }
   for (const f of found) out.write(`${f.url}\n`);

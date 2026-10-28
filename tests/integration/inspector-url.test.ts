@@ -61,10 +61,10 @@ function snapshot(root: string): string {
   walk(root);
   return out.join('\n');
 }
-async function run(p: { configPath: string }) {
+async function run(p: { configPath: string }, sessionId?: string) {
   const out = sink();
   const err = sink();
-  const code = await runInspectorUrl(loadConfig(p.configPath), out.stream, err.stream);
+  const code = await runInspectorUrl(loadConfig(p.configPath), out.stream, err.stream, sessionId);
   return { code, out: out.text(), err: err.text() };
 }
 
@@ -140,6 +140,51 @@ describe.skipIf(process.platform === 'win32')('--inspector-url', () => {
     expect(r.code).toBe(1);
     expect(r.out).toBe('');
   });
+
+  test('a session id selects exactly that live session; no write happens', async () => {
+    const p = project();
+    const a = await session(p, { id: 's-selA', pid: process.pid });
+    const b = await session(p, { id: 's-selB', pid: process.pid });
+    const before = snapshot(p.artifactRoot);
+    const ra = await run(p, 's-selA');
+    const rb = await run(p, 's-selB');
+    expect(ra).toMatchObject({ code: 0, out: `${a.url}\n`, err: '' });
+    expect(rb).toMatchObject({ code: 0, out: `${b.url}\n`, err: '' });
+    expect(snapshot(p.artifactRoot)).toBe(before);
+  });
+
+  test('without a selector every live session of the config is still printed', async () => {
+    const p = project();
+    const a = await session(p, { id: 's-allA', pid: process.pid });
+    const b = await session(p, { id: 's-allB', pid: process.pid });
+    const r = await run(p);
+    expect(r.code).toBe(0);
+    expect(r.out.split('\n').filter(Boolean).sort()).toEqual([a.url, b.url].sort());
+  });
+
+  test('unknown, dead and other-config sessions never fall back to another live session', async () => {
+    const p = project();
+    const live = await session(p, { id: 's-liveSel', pid: process.pid });
+    await session(p, { id: 's-deadSel', pid: await deadPid() });
+    await session(p, { id: 's-otherSel', pid: process.pid, descriptorConfig: path.join(p.dir, 'other.json') });
+    for (const id of ['s-unknown', 's-deadSel', 's-otherSel']) {
+      const r = await run(p, id);
+      expect(r.code).toBe(1);
+      expect(r.out).toBe('');
+      expect(r.err).toContain('INSPECTOR_NOT_RUNNING');
+      expect(r.err).not.toContain(live.url);
+    }
+  });
+
+  test.each([['../s-liveSel'], ['s-a/../../x'], [''], ['x-abc'], ['s-']])('invalid session id %j is rejected with exit 2 and not echoed', async (id) => {
+    const p = project();
+    await session(p, { id: 's-liveSel', pid: process.pid });
+    const r = await run(p, id);
+    expect(r.code).toBe(2);
+    expect(r.out).toBe('');
+    expect(r.err).toContain('INVALID_SESSION');
+    if (id.length > 2) expect(r.err).not.toContain(id);
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('--inspector-url through the real CLI', () => {
@@ -169,5 +214,30 @@ describe.skipIf(process.platform === 'win32')('--inspector-url through the real 
     const r = cli(['--config', p.configPath, other, '--inspector-url']);
     expect(r.status).toBe(2);
     expect(r.stdout).toBe('');
+  });
+
+  test('--session selects one session through the real CLI', async () => {
+    const p = project();
+    await session(p, { id: 's-cliA', pid: process.pid });
+    const b = await session(p, { id: 's-cliB', pid: process.pid });
+    const r = cli(['--config', p.configPath, '--inspector-url', '--session', 's-cliB']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe(`${b.url}\n`);
+    const missing = cli(['--config', p.configPath, '--inspector-url', '--session', 's-nope']);
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toBe('');
+  });
+
+  test.each([
+    [['--session', 's-a1']],
+    [['--check', '--session', 's-a1']],
+    [['--inspector-url', '--session', '../x']],
+    [['--inspector-url', '--session', '']],
+  ])('invalid --session usage %j exits 2 with empty stdout', (args) => {
+    const p = project();
+    const r = cli(['--config', p.configPath, ...args]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).not.toContain('../x');
   });
 });

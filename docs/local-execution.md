@@ -86,6 +86,8 @@ services:
 
 With `inspector.enabled: true` in the config (the demo sets it), the server starts a read-only inspector on loopback. Run `openapi-swagger-mcp --config <file> --inspector-url` in another terminal to print its URL. The token in that URL is printed only by this command, to stdout; it is never written to stderr, logs or MCP tool results. The command only reads the descriptor the running server wrote in its session directory; it does not start a server or touch the artifact directory. A preview call shows in the inspector with no exchange, because nothing was sent.
 
+When several servers share one config, add `--session <id>` to print only that server's URL. The id and a ready-made command come from `list_apis` (`session.inspector.urlCommand`); the command output contains the token, so run it locally rather than through the agent.
+
 ## Try it without your own API
 
 `openapi-swagger-mcp demo` starts a synthetic backend on `127.0.0.1` with invented data and serves the MCP server for two demo services over stdio. It needs no credentials. The backend has no real authentication, so other local processes can reach it while it runs. See "Try the demo" in the README.

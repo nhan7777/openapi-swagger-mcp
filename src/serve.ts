@@ -1,5 +1,6 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { App } from './app.js';
+import { getInspectorDiscovery } from './inspector/discovery.js';
 import { log } from './log.js';
 import { createServer } from './server.js';
 import { errorInfo } from './util.js';
@@ -19,6 +20,8 @@ export async function serve(configPath: string, onClose?: () => Promise<void>): 
     return 1;
   }
 
+  // Startup hint on stderr only; secret-free (no token URL). Not proof that a client finished initialization.
+  log.info('inspector discovery', { discovery: JSON.stringify(getInspectorDiscovery(app)) });
   const server = createServer(app);
   let exiting = false;
   const finish = (code: number): void => {

@@ -9,18 +9,19 @@ import { runInspectorUrl } from './onboarding/inspector-url.js';
 import { serve } from './serve.js';
 import { errorInfo } from './util.js';
 
-const USAGE = 'usage: openapi-swagger-mcp --config <file> [--check | --check-specs | --inspector-url] | init [options] | demo [--dir <empty dir>]';
+const USAGE = 'usage: openapi-swagger-mcp --config <file> [--check | --check-specs | --inspector-url [--session <id>]] | init [options] | demo [--dir <empty dir>]';
+const SESSION_ID = /^s-[A-Za-z0-9]+$/;
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (argv[0] === 'init') return runInit(argv.slice(1), process.stdout, process.stderr);
   if (argv[0] === 'demo') return runDemo(argv.slice(1));
 
-  let values: { config?: string; check?: boolean; 'check-specs'?: boolean; 'inspector-url'?: boolean };
+  let values: { config?: string; check?: boolean; 'check-specs'?: boolean; 'inspector-url'?: boolean; session?: string };
   try {
     ({ values } = parseArgs({
       args: argv,
-      options: { config: { type: 'string' }, check: { type: 'boolean' }, 'check-specs': { type: 'boolean' }, 'inspector-url': { type: 'boolean' } },
+      options: { config: { type: 'string' }, check: { type: 'boolean' }, 'check-specs': { type: 'boolean' }, 'inspector-url': { type: 'boolean' }, session: { type: 'string' } },
       strict: true,
     }));
   } catch (e) {
@@ -35,6 +36,16 @@ async function main(): Promise<number> {
   if (modes > 1) {
     process.stderr.write(`--check, --check-specs and --inspector-url are separate commands; run one at a time\n${USAGE}\n`);
     return 2;
+  }
+  if (values.session !== undefined) {
+    if (!values['inspector-url']) {
+      process.stderr.write(`--session is only valid with --inspector-url\n${USAGE}\n`);
+      return 2;
+    }
+    if (!SESSION_ID.test(values.session)) {
+      process.stderr.write(`--session expects an s- prefixed alphanumeric session id\n${USAGE}\n`);
+      return 2;
+    }
   }
 
   if (values.check) {
@@ -70,7 +81,7 @@ async function main(): Promise<number> {
       process.stderr.write(`${info.code}: ${info.message}\n`);
       return 1;
     }
-    return runInspectorUrl(cfg, process.stdout, process.stderr);
+    return runInspectorUrl(cfg, process.stdout, process.stderr, values.session);
   }
 
   return serve(values.config);

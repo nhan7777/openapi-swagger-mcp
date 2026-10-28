@@ -943,6 +943,8 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /path/printed/by/the/demo/co
 
 `--inspector-url` reads the session's descriptor from the configured artifact directory, checks that it belongs to this config and to a running process, and prints one URL per line on stdout. The URL contains the secret token, so treat it like a password: keep it out of shell history, screenshots and chat. The command starts no server, creates nothing and exits `1` with `INSPECTOR_DISABLED` or `INSPECTOR_NOT_RUNNING` when there is nothing to open. In the timeline, `preview_operation` appears as a call without any HTTP exchange, while `invoke_operation` shows the exchange that was actually sent.
 
+Several MCP processes can share one config. `list_apis` returns a secret-free `session` object (`sessionId` plus Inspector `state`: `running`, `disabled` or `unavailable`) and, when running, a `urlCommand` (`command` and `args`) that resolves to exactly this process's Inspector via `--inspector-url --session <id>`. The same object is in the MCP initialization instructions and in a startup log line on stderr. Run the command yourself in a terminal; it prints the token-bearing URL, so do not paste its output into chat. `--session` accepts `s-` followed by alphanumerics, is valid only with `--inspector-url`, and never falls back to another session: an unknown, stopped or other-config session exits `1` with `INSPECTOR_NOT_RUNNING`. This only makes the information available to the client; whether a client displays it is up to the client.
+
 ## Tool reference
 
 | Tool | Use it to |
