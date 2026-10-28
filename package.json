@@ -1,6 +1,6 @@
 {
   "name": "@nhan7777/openapi-swagger-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Local MCP server that lets agents discover, integrate and test configured Swagger/OpenAPI APIs in dev/UAT.",
   "mcpName": "io.github.nhan7777/openapi-swagger-mcp",
   "license": "MIT",

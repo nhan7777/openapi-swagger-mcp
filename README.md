@@ -42,12 +42,14 @@ services:
 
 The URLs above are examples. They only work if your own API is running there, so replace them with your dev/UAT addresses.
 
+Want to inspect what the agent sends? Follow the [Inspector setup and usage guide](#local-request-inspector) to enable the local browser UI and open the correct MCP session.
+
 **Before continuing:** replace both URLs and save the file. Note its absolute path; you will use that same path in the next two steps.
 
 **Shortcut:** `init` writes a minimal config for you and prints the matching client entry. It validates the config before creating the file, never overwrites an existing file and never edits your client's files:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml --client claude-code
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml --client claude-code
 ```
 
 Add `--bearer-env ORDERS_TOKEN` to read a bearer token from an environment variable (no flag accepts the token itself). A relative `--spec` file path is taken from the directory where you run the command. `--client` is one of `generic`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `codex`, `omp`, `kiro`; the snippet it prints uses the config's absolute path.
@@ -55,7 +57,7 @@ Add `--bearer-env ORDERS_TOKEN` to read a bearer token from an environment varia
 ### 2. Check the config
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.dev.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml --check
 ```
 
 `ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
@@ -65,7 +67,7 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.dev.ya
 `--check` stays offline on purpose. When you also want to know whether the spec can be loaded, run the separate network check, which you must ask for explicitly:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.dev.yaml --check-specs
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml --check-specs
 ```
 
 `--check-specs` loads each service's spec (and the external `$ref`s the loader is allowed to fetch) through the same network policy as the server, then prints one JSON report. It never logs in, never calls a business endpoint and never creates the artifact directory. Static spec credentials, if you configured `spec.auth`, are sent to the spec's own origin, as at server start.
@@ -81,7 +83,7 @@ For clients that use an `mcpServers` configuration, add this to the **client's M
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.2",
+        "@nhan7777/openapi-swagger-mcp@0.1.3",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -230,7 +232,7 @@ The server reads `ORDERS_TOKEN` from **its own process environment**. That is no
   "mcpServers": {
     "api-dev": {
       "command": "npx",
-      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.2", "--config", "/absolute/path/config.dev.yaml"],
+      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.3", "--config", "/absolute/path/config.dev.yaml"],
       "env": { "ORDERS_TOKEN": "replace-with-your-dev-token" }
     }
   }
@@ -245,7 +247,7 @@ The `npx` commands above download the pinned version on first use. Alternatives:
 
 ```bash
 # Global install; the command is then `openapi-swagger-mcp`
-npm install -g @nhan7777/openapi-swagger-mcp@0.1.2
+npm install -g @nhan7777/openapi-swagger-mcp@0.1.3
 
 # From a source checkout (see Development)
 npm ci && npm run build
@@ -601,7 +603,7 @@ If a response exceeds `responseBytes`, you still get the status and headers, but
 Start with the config check:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /absolute/path/config.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.yaml --check
 ```
 
 The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and `operationsChecked: false`. Each check has a `field`, a `state` (`ok`, `pending` or `error`) and possibly a `code`.
@@ -905,14 +907,66 @@ The server is a local process: it calls the APIs you configured directly and kee
 
 ### Local request inspector
 
-Set `inspector.enabled: true` in the API config to enable the optional read-only browser inspector. It binds only to loopback. Open the `url` from the current artifact session's `inspector.json` locally; the descriptor is mode 0600 and its URL carries a session token. Do not paste that URL into chat or logs. The inspector is separate from the stdio MCP transport.
+The optional Inspector is a **read-only browser UI** for the MCP process you are using. It shows tool actions, HTTP requests/responses, authentication runs and diagnostics. It does not send API requests or execute copied cURL commands. The MCP connection itself still uses **stdio**; the browser UI is a separate loopback HTTP server.
 
-The unified timeline groups tool actions with their HTTP requests and updates automatically. Search, scope and service/purpose/status filters apply across all records still retained in the trace, including matches older than the first 200 records. **Load older records** follows bounded cursor pages; `inspector.timelineLimit` caps each page, not the total history you can browse. Parent actions may be included again as context and are deduplicated by the UI. Evicted records cannot be recovered by pagination.
+#### 1. Enable it in your API config
 
-`GET /api/feed` returns `calls`, `exchanges`, trace status and an optional `nextCursor`. Send that cursor with the same filters to continue; cursors are tied to the trace session and filter set. Calls and exchanges are ordered by sequence; context parents do not consume a primary record slot. Filtering scans bounded trace pages rather than collecting the whole index in memory. Sparse searches and deep continuation pages can therefore take longer on a large retained index.
+Add this top-level block alongside your existing `services` configuration:
 
-Pause freezes timeline synchronization; Resume catches up using the active filters and loaded depth. The header includes an `Auto`/`Light`/`Dark` theme switcher, and exchange details open in a side-by-side `Request + Response` workbench with `Copy URL`, `Copy Path`, `Copy Domain` and conditional `Copy Request Body` / `Copy Response Body` actions (shown only when a body is stored, paging through `nextOffset` to completion and copying only the body content, without viewer annotations). Selecting another row supersedes pending detail responses and live refreshes, so an older request cannot replace the current detail. Request/response bodies stay paged in the viewer, where derived-view and incomplete-body warnings remain visible, and injected credentials remain unrecorded. Explicitly revealing agent-supplied secrets or opening auth-response artifacts can expose sensitive local data.
+```yaml
+inspector:
+  enabled: true
+  port: 0
+```
 
+The Inspector is off by default. `port: 0` selects a free port for each process; only loopback hosts (`127.0.0.1` or `::1`) are accepted. The browser must run on the machine hosting the MCP process, or use a tunnel you explicitly configure.
+
+Restart/reconnect this MCP server in your client (OMP, Claude Code, Cursor, etc.) after changing the config or updating the package. **The default shutdown deletes the current session's trace and artifacts.** To retain them, configure `files.retention.keepOnExit: true` before starting the session. Retained files do not keep a stopped session's browser UI running.
+
+#### 2. Get the URL for the correct MCP session
+
+Ask the assistant connected to that MCP server:
+
+> Call `list_apis` and show only `session.sessionId`, `session.inspector.state` and `session.inspector.urlCommand`. Do not execute the URL command.
+
+When the state is `running`, `urlCommand` contains an executable (`command`) and its argument list (`args`). Run that exact command **yourself in a local terminal**. It prints the token-bearing URL; open it in your browser. Do not run it through the assistant or paste the output into chat.
+
+Alternatively, use the same config path and the session ID returned by `list_apis`:
+
+```bash
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 \
+  --config /absolute/path/config.dev.yaml \
+  --inspector-url --session <session-id>
+```
+
+Replace `<session-id>` with the complete `s-...` value. This command only discovers an existing Inspector: it does not start an MCP server or a new session. Without `--session`, it lists all live Inspectors for that config. If several clients or agent windows share a config, always use the exact session ID, not the first/newest URL.
+
+The URL contains a secret token in its fragment (`#t=...`). Treat it like a password: keep it out of chat, screenshots and logs. It is also stored in that session's `inspector.json` descriptor (mode 0600). The secret-free session/command information is available through `list_apis`, MCP initialization instructions and startup stderr, but the client may not display it automatically; OMP does not gain an Inspector button from this metadata.
+
+#### 3. Inspect requests and responses
+
+1. Ask your assistant to use the MCP tools as usual. The timeline updates automatically and groups each tool action with its related HTTP requests, redirect hops and authentication exchanges. `preview_operation` is an offline tool action with no HTTP request; `invoke_operation` shows requests actually sent.
+2. Select a tool row to inspect its arguments, summary and related exchanges. Select an HTTP row to open the side-by-side **Request + Response** workbench.
+3. Use **All Activity**, **Tools Only**, **API Requests Only** or **Errors & Blocked**, then search or filter by service, purpose, send state or status. Filters apply across retained history, not just the first page. **Load older records** continues paging; evicted records cannot be recovered.
+4. Inspect headers, query parameters, cookies and body pages. **Raw (hex)** shows original stored bytes; **Text (derived)** and **Formatted (derived)** are display representations. The viewer keeps warnings for reformatted or incomplete data.
+5. Use **Copy URL**, **Copy Path** or **Copy Domain** for the recorded target (`Copy Domain` includes the scheme and port). Masked query values remain placeholders. **Copy Request Body** / **Copy Response Body** appear only for stored, non-empty bodies and copy body content across all pages, without HTTP headers or viewer annotations. JSON copies contain only the JSON payload; incomplete storage or derived text can still affect the data, so check the viewer warnings.
+6. Open **cURL** to load the command automatically, then **Copy cURL** if needed. Review its warnings and credential placeholders before running it yourself. Copying does not execute it. Tool rows provide **Copy Target**, and **Copy Args** / **Copy Summary** when those values exist.
+
+**Pause** freezes timeline synchronization; **Resume** catches up with the current filters and loaded depth. **Auto / Light / Dark** changes the UI theme. Managed credentials remain unrecorded; explicitly revealed agent-supplied secrets and raw authentication-response artifacts can contain credentials or tokens.
+
+#### Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| `INSPECTOR_DISABLED` / state `disabled` | Add `inspector.enabled: true` to the exact config passed to the MCP process, then reconnect it. |
+| `INSPECTOR_NOT_RUNNING` | Start/connect the MCP server first and get a fresh session ID from that connection. An unknown, ended or different-config session is not substituted with another one. |
+| State `unavailable` | Read startup stderr. A fixed port may already be occupied; prefer `port: 0`. The MCP tools can remain available even if the Inspector could not start. |
+| Old UI after an update | Reconnect MCP so a new process loads the new package, then get its new URL. Refreshing an old tab cannot update code held by the old process. |
+| Wrong window's activity or an empty timeline | Compare the header's session ID with `list_apis` from the intended client connection; retrieve its exact `--session` URL. Clear filters and check whether tracing is enabled. |
+| MCP connection times out before a session is ready | Startup waits for configured specs to load. Check access to remote spec hosts/VPN; enabling the Inspector does not fix an unreachable API/spec endpoint. |
+| A body or credential is missing | Inspect the availability/incomplete warnings. Injected credentials and authentication-request bodies are deliberately not recorded. |
+
+The Inspector reads only its own running process's trace; it is not a cross-session dashboard. `inspector.timelineLimit` caps a feed page, not the total browsable history. For API consumers, `GET /api/feed` returns `calls`, `exchanges`, trace status and an optional `nextCursor` tied to the session and filters; paging cannot restore evicted records.
 
 ### Limitations
 
@@ -928,7 +982,7 @@ Pause freezes timeline synchronization; Resume catches up using the active filte
 To see the tools work without your own API or any real credential:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 demo
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 demo
 ```
 
 `demo` starts a synthetic backend on `127.0.0.1` with invented data, writes a throwaway project (two services: `demo-shop`, anonymous, and `demo-account`, with login and refresh) and serves it over stdio like any other config, so put the same command in your client entry instead of `--config`. It prints the backend address and config path to stderr; stdout stays reserved for MCP. Ask for `demo-account` to authenticate first, then call its `GET /me`. `POST /orders` answers `422` and echoes what it received, which is useful for seeing that invalid data is sent unchanged, and `GET /reports/large` returns a body big enough to be stored as an artifact.
@@ -938,7 +992,7 @@ The backend has no real authentication, so other processes on your machine can r
 The demo turns the local request inspector on. It is read-only, listens on loopback only and needs a token, which the demo never prints. To open it, run this in another terminal (the demo prints the exact command with its config path on stderr):
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.2 --config /path/printed/by/the/demo/config.json --inspector-url
+npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /path/printed/by/the/demo/config.json --inspector-url
 ```
 
 `--inspector-url` reads the session's descriptor from the configured artifact directory, checks that it belongs to this config and to a running process, and prints one URL per line on stdout. The URL contains the secret token, so treat it like a password: keep it out of shell history, screenshots and chat. The command starts no server, creates nothing and exits `1` with `INSPECTOR_DISABLED` or `INSPECTOR_NOT_RUNNING` when there is nothing to open. In the timeline, `preview_operation` appears as a call without any HTTP exchange, while `invoke_operation` shows the exchange that was actually sent.
@@ -969,10 +1023,10 @@ The npm package runs **locally** in your MCP client. A catalog listing does not 
 
 | Channel | Status checked on 2026-10-21 | Installation |
 |---|---|---|
-| [npm](https://www.npmjs.com/package/@nhan7777/openapi-swagger-mcp) | `0.1.2` published | Follow [Quick start](#quick-start) or the [client guide](docs/clients.md) |
-| [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp) | `0.1.2` active and latest | Metadata points at the npm stdio package; provide your local `--config` path |
+| [npm](https://www.npmjs.com/package/@nhan7777/openapi-swagger-mcp) | Public package; check the registry for the current `latest` version | Follow [Quick start](#quick-start) or the [client guide](docs/clients.md) |
+| [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp) | Publication is verified by the tagged release workflow | Metadata points at the npm stdio package; provide your local `--config` path |
 | [GitHub MCP Registry](https://github.com/mcp) | Separate listing not verified | Official Registry publication does not prove immediate visibility in this gallery; manual client setup works independently |
-| [Glama](https://glama.ai/mcp/servers/nhan7777/openapi-swagger-mcp) | Repository synced; README shows `0.1.2`. Tool inspection is still pending | Follow the npm instructions; Glama's hosted deploy is not configured for this server |
+| [Glama](https://glama.ai/mcp/servers/nhan7777/openapi-swagger-mcp) | Last checked against `0.1.2`; tool inspection is still pending | Follow the npm instructions; Glama's hosted deploy is not configured for this server |
 | [Smithery](https://smithery.ai/future) | Not submitted | Connection management, accounts and CLI are scheduled to shut down on 2026-10-31; no Smithery adapter or hosted endpoint is provided |
 
 The repository owner can [claim the Glama listing](https://glama.ai/mcp/servers/nhan7777/openapi-swagger-mcp/admin) through GitHub login and request a repository re-sync. No separate listing is needed. Glama may build and inspect the public repository; that is not permission to supply private API credentials or network access.
