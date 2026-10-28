@@ -187,7 +187,11 @@ describe('discovery never follows paths found inside files', () => {
     await writeDescriptor(s.sessionDir, hostile);
     const open = vi.spyOn(fsp, 'open');
     expect(await discover(s)).toEqual([]); // configPath differs from the caller's value
-    const rootReal = fs.realpathSync(s.root);
-    for (const [p] of open.mock.calls) expect(path.resolve(String(p)).startsWith(rootReal + path.sep)).toBe(true);
+    // Match discovery's native realpath normalization (including Windows path aliases).
+    const rootReal = await fsp.realpath(s.root);
+    for (const [p] of open.mock.calls) {
+      const relative = path.relative(rootReal, path.resolve(String(p)));
+      expect(relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)).toBe(true);
+    }
   });
 });

@@ -44,7 +44,7 @@ Two commands, deliberately separate:
 1. Create a config. `init` writes a minimal one and prints the client entry; it refuses to overwrite an existing file and never edits your client's files:
 
    ```bash
-   npx -y @nhan7777/openapi-swagger-mcp@0.1.3 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml
+   npx -y @nhan7777/openapi-swagger-mcp@0.1.4 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml
    ```
 
 2. Run `--check`, add the printed entry to your client (see [clients.md](clients.md)) and restart or reconnect it.

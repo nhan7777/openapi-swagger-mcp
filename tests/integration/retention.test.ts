@@ -80,11 +80,14 @@ describe('start-up cleanup', () => {
     const pid = deadPid();
     const at = (hoursAgo: number): string => new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
     session(root, 's-ended-old', { pid, endedAt: at(30) }, 600);
-    session(root, 's-ended-mid', { pid, endedAt: at(20) }, 600);
-    session(root, 's-ended-new', { pid, endedAt: at(10) }, 600);
+    const mid = session(root, 's-ended-mid', { pid, endedAt: at(20) }, 600);
+    const newest = session(root, 's-ended-new', { pid, endedAt: at(10) }, 600);
     expect(await reclaimOrphans(root, { crashedSessionMaxAgeHours: 0, maxRetainedBytes: 1 << 30 })).toEqual([]);
     expect(fs.readdirSync(root).sort()).toEqual(['s-ended-mid', 's-ended-new', 's-ended-old']);
-    const removed = await reclaimOrphans(root, { crashedSessionMaxAgeHours: 0, maxRetainedBytes: 1500 });
+    // Retention counts manifests too; their hostname/PID length varies across runners.
+    const maxRetainedBytes = [mid, newest].reduce((total, dir) =>
+      total + fs.statSync(path.join(dir, 'payload.bin')).size + fs.statSync(path.join(dir, 'owner.json')).size, 0);
+    const removed = await reclaimOrphans(root, { crashedSessionMaxAgeHours: 0, maxRetainedBytes });
     expect(removed).toEqual(['s-ended-old']);
     expect(fs.readdirSync(root).sort()).toEqual(['s-ended-mid', 's-ended-new']);
   });

@@ -49,7 +49,7 @@ Want to inspect what the agent sends? Follow the [Inspector setup and usage guid
 **Shortcut:** `init` writes a minimal config for you and prints the matching client entry. It validates the config before creating the file, never overwrites an existing file and never edits your client's files:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml --client claude-code
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 init --service orders --base-url http://localhost:8080/api/v1 --spec http://localhost:8080/v3/api-docs --out config.dev.yaml --client claude-code
 ```
 
 Add `--bearer-env ORDERS_TOKEN` to read a bearer token from an environment variable (no flag accepts the token itself). A relative `--spec` file path is taken from the directory where you run the command. `--client` is one of `generic`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `codex`, `omp`, `kiro`; the snippet it prints uses the config's absolute path.
@@ -57,7 +57,7 @@ Add `--bearer-env ORDERS_TOKEN` to read a bearer token from an environment varia
 ### 2. Check the config
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml --check
 ```
 
 `ok: true` means the static checks passed. It does **not** mean the remote spec was fetched or any endpoint was verified: `--check` makes no network calls, does not log in, and does not create the artifact directory. See [Troubleshooting](#troubleshooting) for the report format and exit codes.
@@ -67,7 +67,7 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.ya
 `--check` stays offline on purpose. When you also want to know whether the spec can be loaded, run the separate network check, which you must ask for explicitly:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml --check-specs
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml --check-specs
 ```
 
 `--check-specs` loads each service's spec (and the external `$ref`s the loader is allowed to fetch) through the same network policy as the server, then prints one JSON report. It never logs in, never calls a business endpoint and never creates the artifact directory. Static spec credentials, if you configured `spec.auth`, are sent to the spec's own origin, as at server start.
@@ -83,7 +83,7 @@ For clients that use an `mcpServers` configuration, add this to the **client's M
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.3",
+        "@nhan7777/openapi-swagger-mcp@0.1.4",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -232,7 +232,7 @@ The server reads `ORDERS_TOKEN` from **its own process environment**. That is no
   "mcpServers": {
     "api-dev": {
       "command": "npx",
-      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.3", "--config", "/absolute/path/config.dev.yaml"],
+      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.4", "--config", "/absolute/path/config.dev.yaml"],
       "env": { "ORDERS_TOKEN": "replace-with-your-dev-token" }
     }
   }
@@ -247,7 +247,7 @@ The `npx` commands above download the pinned version on first use. Alternatives:
 
 ```bash
 # Global install; the command is then `openapi-swagger-mcp`
-npm install -g @nhan7777/openapi-swagger-mcp@0.1.3
+npm install -g @nhan7777/openapi-swagger-mcp@0.1.4
 
 # From a source checkout (see Development)
 npm ci && npm run build
@@ -603,7 +603,7 @@ If a response exceeds `responseBytes`, you still get the status and headers, but
 Start with the config check:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.yaml --check
 ```
 
 The report contains `ok`, `services`, `checks`, `remoteSpecsChecked: false` and `operationsChecked: false`. Each check has a `field`, a `state` (`ok`, `pending` or `error`) and possibly a `code`.
@@ -934,7 +934,7 @@ When the state is `running`, `urlCommand` contains an executable (`command`) and
 Alternatively, use the same config path and the session ID returned by `list_apis`:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 \
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 \
   --config /absolute/path/config.dev.yaml \
   --inspector-url --session <session-id>
 ```
@@ -982,7 +982,7 @@ The Inspector reads only its own running process's trace; it is not a cross-sess
 To see the tools work without your own API or any real credential:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 demo
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 demo
 ```
 
 `demo` starts a synthetic backend on `127.0.0.1` with invented data, writes a throwaway project (two services: `demo-shop`, anonymous, and `demo-account`, with login and refresh) and serves it over stdio like any other config, so put the same command in your client entry instead of `--config`. It prints the backend address and config path to stderr; stdout stays reserved for MCP. Ask for `demo-account` to authenticate first, then call its `GET /me`. `POST /orders` answers `422` and echoes what it received, which is useful for seeing that invalid data is sent unchanged, and `GET /reports/large` returns a body big enough to be stored as an artifact.
@@ -992,7 +992,7 @@ The backend has no real authentication, so other processes on your machine can r
 The demo turns the local request inspector on. It is read-only, listens on loopback only and needs a token, which the demo never prints. To open it, run this in another terminal (the demo prints the exact command with its config path on stderr):
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /path/printed/by/the/demo/config.json --inspector-url
+npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /path/printed/by/the/demo/config.json --inspector-url
 ```
 
 `--inspector-url` reads the session's descriptor from the configured artifact directory, checks that it belongs to this config and to a running process, and prints one URL per line on stdout. The URL contains the secret token, so treat it like a password: keep it out of shell history, screenshots and chat. The command starts no server, creates nothing and exits `1` with `INSPECTOR_DISABLED` or `INSPECTOR_NOT_RUNNING` when there is nothing to open. In the timeline, `preview_operation` appears as a call without any HTTP exchange, while `invoke_operation` shows the exchange that was actually sent.

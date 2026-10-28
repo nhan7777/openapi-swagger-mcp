@@ -23,14 +23,14 @@ The client config points at the API config through `--config /absolute/path/conf
 2. Create your API config and run the static check **in a terminal**:
 
    ```bash
-   npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml --check
+   npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml --check
    ```
 
    Expect exit code `0` and `"ok": true`. This check does not fetch your spec or call your API. See [Troubleshooting](../README.md#troubleshooting).
 3. Use **absolute paths** everywhere. Clients start the server from a directory you do not control.
 4. **Never put `--check` in a client entry.** That mode prints a report and exits, so the client would see a server that dies immediately.
 5. The server speaks **stdio** only. There is no URL, port or web UI to enter. Always choose the client's "command" / "stdio" / "local" server type, not "HTTP" or "SSE".
-6. Pin the version as shown (`@0.1.3`). Do not use `@latest`; a client restart could silently change the server. The unscoped npm package named `openapi-swagger-mcp` is a different project.
+6. Pin the version as shown (`@0.1.4`). Do not use `@latest`; a client restart could silently change the server. The unscoped npm package named `openapi-swagger-mcp` is a different project.
 
 ### Shared entry
 
@@ -43,7 +43,7 @@ Most clients use the same `mcpServers` shape. Where a client needs something dif
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.3",
+        "@nhan7777/openapi-swagger-mcp@0.1.4",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -107,7 +107,7 @@ Source: [Connect Claude Code to tools via MCP](https://code.claude.com/docs/en/m
 Claude Code has a CLI for adding servers. Everything after `--` is passed to the server untouched, so `-y` and `--config` are not read by Claude Code.
 
 ```bash
-claude mcp add --transport stdio api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml
+claude mcp add --transport stdio api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
 ```
 
 Scope (the default is `local`):
@@ -128,7 +128,7 @@ claude mcp get api-dev   # details, including a failure reason if any
 claude mcp remove api-dev
 ```
 
-Inside a Claude Code session, `/mcp` shows server status and has a **Reconnect** action. If you prefer JSON, `claude mcp add-json api-dev '{"command":"npx","args":["-y","@nhan7777/openapi-swagger-mcp@0.1.3","--config","/absolute/path/config.dev.yaml"]}'` adds the same server; pass the object inside `mcpServers`, not the wrapper.
+Inside a Claude Code session, `/mcp` shows server status and has a **Reconnect** action. If you prefer JSON, `claude mcp add-json api-dev '{"command":"npx","args":["-y","@nhan7777/openapi-swagger-mcp@0.1.4","--config","/absolute/path/config.dev.yaml"]}'` adds the same server; pass the object inside `mcpServers`, not the wrapper.
 
 Do not add permission allow rules for this server's tools, so Claude Code keeps asking before each call. Then send the [first prompt](#first-prompt-safe).
 
@@ -167,7 +167,7 @@ Do not copy a config between them without changing the root key.
 3. Enter the command (this is the whole launch line, not a URL):
 
    ```text
-   npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml
+   npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
    ```
 
 4. Enter a server ID such as `api-dev`.
@@ -189,7 +189,7 @@ VS Code format (`.vscode/mcp.json`, or the profile `mcp.json` opened with **MCP:
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.3",
+        "@nhan7777/openapi-swagger-mcp@0.1.4",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -245,7 +245,7 @@ Source: [MCP in Cline](https://docs.cline.bot/mcp/mcp-overview).
          "command": "npx",
          "args": [
            "-y",
-           "@nhan7777/openapi-swagger-mcp@0.1.3",
+           "@nhan7777/openapi-swagger-mcp@0.1.4",
            "--config",
            "/absolute/path/config.dev.yaml"
          ],
@@ -264,7 +264,7 @@ Source: [MCP in Cline](https://docs.cline.bot/mcp/mcp-overview).
 The CLI uses `~/.cline/data/settings/cline_mcp_settings.json` (override with `CLINE_MCP_SETTINGS_PATH`). Add the server without opening the file:
 
 ```bash
-cline mcp add api-dev --yes -- npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml
+cline mcp add api-dev --yes -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
 cline config mcp          # list servers (add --json for JSON)
 ```
 
@@ -283,7 +283,7 @@ Codex stores MCP servers in `config.toml`. The root table is `mcp_servers`, **no
 ### With the CLI
 
 ```bash
-codex mcp add api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.3 --config /absolute/path/config.dev.yaml
+codex mcp add api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
 codex mcp list
 codex mcp --help
 ```
@@ -295,7 +295,7 @@ After adding the server, edit its entry in `config.toml` to set `startup_timeout
 ```toml
 [mcp_servers.api-dev]
 command = "npx"
-args = ["-y", "@nhan7777/openapi-swagger-mcp@0.1.3", "--config", "/absolute/path/config.dev.yaml"]
+args = ["-y", "@nhan7777/openapi-swagger-mcp@0.1.4", "--config", "/absolute/path/config.dev.yaml"]
 startup_timeout_sec = 60
 default_tools_approval_mode = "prompt"
 ```
@@ -333,7 +333,7 @@ Source: OMP's bundled `mcp-config.md` and `mcp-runtime-lifecycle.md` (`omp://mcp
          "command": "npx",
          "args": [
            "-y",
-           "@nhan7777/openapi-swagger-mcp@0.1.3",
+           "@nhan7777/openapi-swagger-mcp@0.1.4",
            "--config",
            "/absolute/path/config.dev.yaml"
          ]
@@ -383,7 +383,7 @@ Source: [MCP configuration in Kiro](https://kiro.dev/docs/mcp/configuration/).
          "command": "npx",
          "args": [
            "-y",
-           "@nhan7777/openapi-swagger-mcp@0.1.3",
+           "@nhan7777/openapi-swagger-mcp@0.1.4",
            "--config",
            "/absolute/path/config.dev.yaml"
          ],
