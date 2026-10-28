@@ -9,28 +9,38 @@
 </head>
 <body>
 <header class="bar">
-  <h1>Request inspector</h1>
-  <span class="badge" id="readonly">read-only</span>
-  <span id="trace-session" class="muted"></span>
+  <div class="brand">
+    <h1>Request Inspector</h1>
+    <span class="badge badge-readonly" id="readonly">read-only</span>
+    <span id="trace-session" class="mono muted session-tag" title="Trace session ID"></span>
+  </div>
   <div class="spacer"></div>
-  <div role="group" aria-label="List mode">
-    <button type="button" id="mode-calls" aria-pressed="true">Calls</button>
-    <button type="button" id="mode-exchanges" aria-pressed="false">Exchanges</button>
+  <div class="header-telemetry">
+    <span id="timeline-counts" class="telemetry-counts mono muted">0 tool actions · 0 API requests</span>
+    <div class="live-cluster" role="group" aria-label="Real-time stream control">
+      <span id="live-pill" class="live-pill is-live" aria-live="polite">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="live-text">LIVE</span>
+      </span>
+      <button type="button" id="live-toggle" class="btn-subtle" aria-pressed="false" title="Pause or resume real-time updates">Pause</button>
+    </div>
   </div>
 </header>
 <div id="banner" class="banner" hidden></div>
 <div id="notice" class="notice" role="status" aria-live="polite"></div>
-<div class="layout">
-  <nav aria-label="Timeline">
-    <form id="filters" class="filters"></form>
+<div id="layout" class="layout">
+  <nav id="timeline-pane" aria-label="Unified Activity Timeline">
+    <form id="filters" class="filters" aria-label="Filter timeline"></form>
     <ul id="list" class="list"></ul>
     <div class="more">
-      <button type="button" id="more" hidden>Load more</button>
-      <button type="button" id="fresh" hidden>New activity: reload</button>
+      <button type="button" id="more" hidden>Load older records</button>
     </div>
   </nav>
   <main id="detail" aria-live="polite">
-    <p class="muted">Select a call or an exchange.</p>
+    <div class="empty-detail">
+      <div class="empty-title">Select a tool action or API request</div>
+      <p class="muted">Agent tool invocations and their outgoing HTTP API requests stream here in real time. Click any row in the timeline to inspect arguments, headers, bodies, auth recipes, and schema diagnostics.</p>
+    </div>
   </main>
 </div>
 <script type="module" src="/app.js"></script>

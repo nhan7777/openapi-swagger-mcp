@@ -38,15 +38,21 @@ export function toStatusDto(s: TraceStatus): StatusDto {
 }
 
 export function toCallItem(c: CallSummary): TimelineItemDto {
+  const service = c.service ?? (typeof c.args.service === 'string' ? c.args.service : undefined);
+  const operation = c.operation ?? (typeof c.args.operation === 'string' ? c.args.operation : undefined);
   return {
     id: c.callId,
+    seq: c.seq,
     kind: 'call',
     startedAtMs: ms(c.startedAt),
     ...(c.durationMs !== undefined ? { durationMs: c.durationMs } : {}),
     label: c.tool,
-    ...(c.service ? { service: c.service } : {}),
-    ...(c.operation ? { operation: c.operation } : {}),
+    ...(service ? { service } : {}),
+    ...(operation ? { operation } : {}),
     callState: c.state,
+    requestCount: c.requestCount,
+    authRunCount: c.authRunCount,
+    policyBlockCount: c.policyBlockCount,
     ...(c.errorCode ? { errorCode: c.errorCode } : {}),
     lane: 0,
     partial: c.partial,
@@ -57,6 +63,7 @@ export function toExchangeItem(x: ExchangeRecord, services: ReadonlyMap<string, 
   const u = splitUrl(x.request.url, services.get(x.service));
   return {
     id: x.requestId,
+    seq: x.seq,
     kind: 'exchange',
     startedAtMs: ms(x.startedAt),
     ...(x.durationMs !== undefined ? { durationMs: x.durationMs } : {}),

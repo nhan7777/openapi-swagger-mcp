@@ -8,6 +8,7 @@ export interface MetaDto {
   traceSessionId: string;
   version: string;
   readOnly: true;
+  services: string[];
   limits: { pageBytes: number; formatMaxBytes: number; timelineLimit: number };
 }
 
@@ -22,6 +23,7 @@ export interface StatusDto {
 
 export interface TimelineItemDto {
   id: string;
+  seq: number;
   kind: 'call' | 'exchange';
   startedAtMs: number;
   durationMs?: number;
@@ -37,6 +39,9 @@ export interface TimelineItemDto {
   outcome?: 'response' | 'network_error' | 'blocked' | 'aborted';
   errorCode?: string;
   callState?: 'in_progress' | 'ok' | 'error';
+  requestCount?: number;
+  authRunCount?: number;
+  policyBlockCount?: number;
   requestInvalid?: boolean;
   parentId?: string;
   relation?: 'redirect';
@@ -46,6 +51,19 @@ export interface TimelineItemDto {
   /** Drawing aid only for overlapping time ranges within one page; it implies no causal relation. */
   lane: number;
   partial: boolean;
+}
+
+export interface TimelineFeedDto {
+  changeSeq: number;
+  state: 'ok' | 'degraded' | 'disabled';
+  degradedReasons: string[];
+  droppedEvents: number;
+  droppedRecords: number;
+  evictedRecords: number;
+  calls: TimelineItemDto[];
+  exchanges: TimelineItemDto[];
+  /** Continue older matching primary records. Parent calls may repeat as bounded context headers. */
+  nextCursor?: string;
 }
 
 export interface PageDto<T> {
