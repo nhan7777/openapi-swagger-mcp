@@ -270,16 +270,14 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
       p.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
     }
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('"sku": "PRO-1"');
-    expect(ui.copied.at(-1)).not.toContain('POST http://localhost:9000');
+    expect(JSON.parse(ui.copied.at(-1)!)).toEqual({ sku: 'PRO-1' });
 
     copyResBtns[0]!.click();
     for (const p of ui.pending.splice(0)) {
       p.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
     }
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('"orderId": "ord_77"');
-    expect(ui.copied.at(-1)).not.toContain('HTTP 201');
+    expect(JSON.parse(ui.copied.at(-1)!)).toEqual({ orderId: 'ord_77' });
 
     // 3. Switching to cURL tab auto-loads cURL without a "Build cURL" button
     const curlTab = detailNode.querySelectorAll('button').find((b) => b.textContent === 'cURL')!;
@@ -298,7 +296,7 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(ui.node('detail').querySelectorAll('[data-copy="request"]')).toHaveLength(0);
     expect(ui.node('detail').querySelectorAll('[data-copy="response"]')).toHaveLength(0);
   });
-  test('Copy Request and Copy Response page through all nextOffset body chunks and retain incomplete body diagnostics', async () => {
+  test('Copy Request and Copy Response page through all body chunks without adding clipboard annotations', async () => {
     const ui = await boot();
     const exItem = item('exchange', 'req_big', 45);
     const sel = ui.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
@@ -354,9 +352,9 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(ui.pending[0]?.path).toContain('offset=32');
     ui.pending.shift()!.resolve({ view: 'text', offset: 32, totalBytes: 40, bytesBase64: '', artifactSha256: 'x', complete: true, text: 'REQ_PAGE_3_END', escaped: 0 });
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('REQ_PAGE_1__REQ_PAGE_2__REQ_PAGE_3_END');
+    expect(ui.copied.at(-1)).toBe('REQ_PAGE_1__REQ_PAGE_2__REQ_PAGE_3_END');
 
-    // 2. Copy Response on a >formatMaxBytes incomplete body pages through all text chunks and appends incomplete diagnostic
+    // Stored-body metadata must not be appended to copied JSON.
     const copyResBtn = detailNode.querySelectorAll('[data-copy="response"]')[0]!;
     copyResBtn.click();
     await ui.flush();
@@ -367,9 +365,7 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(ui.pending[0]?.path).toContain('offset=16');
     ui.pending.shift()!.resolve({ view: 'text', offset: 16, totalBytes: 32, bytesBase64: '', artifactSha256: 'y', complete: false, text: '"part2":2}', escaped: 1 });
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('{"part1":1,"part2":2}');
-    expect(ui.copied.at(-1)).toContain('[derived text view (not original raw bytes): 32 bytes; 3 escaped]');
-    expect(ui.copied.at(-1)).toContain('[stored body is incomplete: response_bytes_limit]');
+    expect(JSON.parse(ui.copied.at(-1)!)).toEqual({ part1: 1, part2: 2 });
   });
 
   test('copyBtn supports successful execCommand fallback and reports failure without Copied state when both Clipboard API and execCommand fail', async () => {

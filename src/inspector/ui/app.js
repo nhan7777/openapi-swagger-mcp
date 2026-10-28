@@ -213,10 +213,6 @@ async function fetchBodySnapshot(id, role, meta) {
   const limit = S.meta?.limits?.pageBytes ?? 16384;
   const parts = [];
   let offset = 0;
-  let complete = meta.complete !== false;
-  let escaped = 0;
-  let totalBytes = meta.length;
-  let formattedNote;
   while (offset !== undefined) {
     const p = await api(`/api/exchanges/${encodeURIComponent(id)}/body`, {
       role,
@@ -231,24 +227,12 @@ async function fetchBodySnapshot(id, role, meta) {
       }
       return `[formatted view unavailable: ${p.reason}]`;
     }
-    if (p.complete === false) complete = false;
-    if (typeof p.totalBytes === 'number') totalBytes = p.totalBytes;
-    if (typeof p.escaped === 'number') escaped += p.escaped;
-    if (p.note) formattedNote = p.note;
     if (p.view === 'raw') parts.push(hexView(fromBase64(p.bytesBase64), p.offset));
     else parts.push(p.text || '');
     if (p.nextOffset === undefined || p.nextOffset <= offset) break;
     offset = p.nextOffset;
   }
-  const bodyText = view === 'raw' ? parts.join('\n') : parts.join('');
-  const notes = [];
-  if (view === 'formatted' && formattedNote) notes.push(`[derived formatted view: ${formattedNote}]`);
-  else if (view === 'text') notes.push(`[derived text view (not original raw bytes)${totalBytes !== undefined ? `: ${totalBytes} bytes` : ''}; ${escaped} escaped]`);
-  else if (view === 'raw') notes.push(`[derived raw hex view${totalBytes !== undefined ? `: ${totalBytes} bytes` : ''}]`);
-  if (!complete || meta.incompleteReason) {
-    notes.push(`[stored body is incomplete${meta.incompleteReason ? `: ${meta.incompleteReason}` : ''}]`);
-  }
-  return [bodyText, ...notes].filter(Boolean).join('\n');
+  return view === 'raw' ? parts.join('\n') : parts.join('');
 }
 
 
