@@ -288,6 +288,148 @@ describe('timeline over a real trace', () => {
     expect(ex).toMatchObject({ sendState: 'not_sent', outcome: 'network_error', errorCode: 'CONNECTION_REFUSED' });
     expect(ex.status).toBeUndefined();
   });
+
+  test('unified /api/feed and long-poll /api/status synchronize calls and exchanges with live filters', async () => {
+    const c = await start();
+    const meta = json<{ services: string[] }>(await c.api('/api/meta'));
+    expect(meta.services).toContain('o30');
+
+    const s0 = json<{ changeSeq: number }>(await c.api('/api/status'));
+    const waitReply = c.api(`/api/status?since=${s0.changeSeq}&waitMs=4000`);
+    h!.backend.json('GET /items/1', 200, { id: 1, name: 'widget' });
+    const { callId } = await inCall('o30', 'getItem', { path: { id: 1 } });
+    const s1 = json<{ changeSeq: number }>(await waitReply);
+    expect(s1.changeSeq).toBeGreaterThan(s0.changeSeq);
+
+    const feed = json<{ changeSeq: number; calls: Array<Item & { seq: number; requestCount?: number }>; exchanges: Array<Item & { seq: number }> }>(await c.api('/api/feed'));
+    expect(feed.changeSeq).toBeGreaterThanOrEqual(s1.changeSeq);
+    const callItem = feed.calls.find((x) => x.id === callId)!;
+    expect(callItem).toBeDefined();
+    expect(callItem.requestCount).toBe(1);
+    expect(typeof callItem.seq).toBe('number');
+    expect(feed.exchanges.some((x) => x.callId === callId && x.pathDisplay?.endsWith('/items/1'))).toBe(true);
+
+    // Free-text q filter on exchange path retains its parent call in unified mode
+    const byPath = json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?q=items%2F1'));
+    expect(byPath.exchanges).toHaveLength(1);
+    expect(byPath.calls.map((x) => x.id)).toContain(callId);
+
+    // Kind-scoped feed
+    expect(json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?kind=call')).exchanges).toHaveLength(0);
+    expect(json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?kind=exchange')).calls).toHaveLength(0);
+
+    // Errors filter matches 500 and retains parent call, excluding 200 call
+    h!.backend.json('GET /me', 500, { error: 'boom' });
+    const errCall = await inCall('o30', 'me');
+    const errFeed = json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?errors=1'));
+    expect(errFeed.calls.map((x) => x.id)).toEqual([errCall.callId]);
+    expect(errFeed.exchanges.every((x) => x.callId === errCall.callId)).toBe(true);
+
+    const otherCall = h!.app.recorderForServer.beginCall({ tool: 'other_tool', args: { service: 'o30', operation: 'GET /me' } });
+    otherCall.setTarget({ service: 'o30', operation: 'GET /me', revision: h!.app.registry.peek('o30')!.revision });
+    const otherExchange = h!.app.recorderForServer.beginExchange({
+      purpose: 'business',
+      service: 'o30',
+      operation: 'GET /me',
+      callId: otherCall.callId,
+      hop: 0,
+      request: { method: 'GET', url: 'http://127.0.0.1/me', query: [], headers: [], cookies: [], transportAdded: [] },
+    });
+    otherExchange.dispatched();
+    otherExchange.response({ status: 500, headers: {}, decodedEncodings: [] });
+    otherExchange.end({ sendState: 'response_received', outcome: 'response' });
+    otherCall.end({ isError: true });
+    const scopedErrors = json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?errors=1&tool=invoke_operation'));
+    expect(scopedErrors.calls.map((x) => x.id)).toEqual([errCall.callId]);
+    expect(scopedErrors.exchanges.every((x) => x.callId === errCall.callId)).toBe(true);
+  });
+
+  test('feed filters find retained matches beyond the first 200 records', async () => {
+    const c = await start();
+    const recorder = h!.app.recorderForServer;
+    const old = recorder.beginCall({ tool: 'unique_old_review_target', args: { service: 'old_service' } });
+    old.end({ isError: true });
+    for (let n = 0; n < 210; n++) recorder.beginCall({ tool: 'newer_call', args: { service: 'new_service' } }).end({ isError: false });
+    for (const filter of ['q=unique_old_review_target', 'errors=1', 'service=old_service']) {
+      const feed = json<{ calls: Item[]; exchanges: Item[] }>(await c.api(`/api/feed?${filter}`));
+      expect(feed.calls.map((x) => x.id)).toEqual([old.callId]);
+      expect(feed.exchanges).toEqual([]);
+    }
+  });
+
+  test('feed cursors traverse more than 200 primary records without gaps and reject other filters', async () => {
+    const c = await start();
+    const ids: string[] = [];
+    for (let n = 0; n < 225; n++) {
+      const call = h!.app.recorderForServer.beginCall({ tool: 'paged_review', args: {} });
+      ids.unshift(call.callId);
+      call.end({ isError: false });
+    }
+    const found: string[] = [];
+    let nextCursor: string | undefined;
+    do {
+      const query = new URLSearchParams({ tool: 'paged_review', kind: 'call', limit: '70', ...(nextCursor ? { cursor: nextCursor } : {}) });
+      const reply = await c.api(`/api/feed?${query}`);
+      expect(reply.status).toBe(200);
+      const feed = json<{ calls: Item[]; exchanges: Item[]; nextCursor?: string }>(reply);
+      expect(feed.calls.length).toBeLessThanOrEqual(70);
+      found.push(...feed.calls.map((x) => x.id));
+      nextCursor = feed.nextCursor;
+      if (found.length === 70) {
+        expect(nextCursor).toBeDefined();
+        expect((await c.api(`/api/feed?kind=call&tool=different&cursor=${nextCursor}`)).status).toBe(400);
+        h!.app.recorderForServer.beginCall({ tool: 'paged_review', args: {} }).end({ isError: false });
+      }
+      expect(found.length).toBeLessThanOrEqual(ids.length);
+    } while (nextCursor);
+    expect(found).toEqual(ids);
+    expect((await c.api('/api/feed?cursor=bogus')).status).toBe(400);
+  });
+
+  test('feed default page size honors a smaller configured timeline limit', async () => {
+    const c = await start({ config: { inspector: { enabled: true, timelineLimit: 2 } } });
+    for (let n = 0; n < 3; n++) h!.app.recorderForServer.beginCall({ tool: 'bounded_page', args: {} }).end({ isError: false });
+    const feed = json<{ calls: Item[]; nextCursor?: string }>(await c.api('/api/feed?kind=call'));
+    expect(feed.calls).toHaveLength(2);
+    expect(feed.nextCursor).toBeDefined();
+  });
+
+  test('feed pages retain matching parent context and children across distant page boundaries', async () => {
+    const c = await start();
+    const recorder = h!.app.recorderForServer;
+    const parent = recorder.beginCall({ tool: 'parent_review_target', args: { service: 'o30' } });
+    parent.setTarget({ service: 'o30', operation: 'GET /me' });
+    const requestIds: string[] = [];
+    for (let n = 0; n < 215; n++) {
+      const exchange = recorder.beginExchange({
+        purpose: 'business', service: 'o30', operation: 'GET /me', callId: parent.callId, hop: n,
+        request: { method: 'GET', url: `http://127.0.0.1/child_review_${n}`, query: [], headers: [], cookies: [], transportAdded: [] },
+      });
+      requestIds.unshift(exchange.requestId);
+      exchange.dispatched();
+      exchange.response({ status: n === 0 ? 503 : 200, headers: {}, decodedEncodings: [] });
+      exchange.end({ sendState: 'response_received', outcome: 'response' });
+    }
+    parent.end({ isError: false });
+    const sparse = json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?q=child_review_0&status=503&limit=1'));
+    expect(sparse.calls.map((x) => x.id)).toEqual([parent.callId]);
+    expect(sparse.exchanges.map((x) => x.id)).toEqual([requestIds[214]]);
+
+    const found: string[] = [];
+    let nextCursor: string | undefined;
+    do {
+      const q = new URLSearchParams({ q: 'parent_review_target', limit: '40', ...(nextCursor ? { cursor: nextCursor } : {}) });
+      const feed = json<{ calls: Item[]; exchanges: Item[]; nextCursor?: string }>(await c.api(`/api/feed?${q}`));
+      if (feed.exchanges.length) expect(feed.calls.map((x) => x.id)).toContain(parent.callId);
+      found.push(...feed.exchanges.map((x) => x.id));
+      nextCursor = feed.nextCursor;
+      expect(found.length).toBeLessThanOrEqual(215);
+    } while (nextCursor);
+    expect(found).toEqual(requestIds);
+    const excluded = json<{ calls: Item[]; exchanges: Item[] }>(await c.api('/api/feed?errors=1&tool=other_tool'));
+    expect(excluded.calls).toEqual([]);
+    expect(excluded.exchanges).toEqual([]);
+  });
 });
 
 describe('bounded exact-byte reading', () => {
@@ -394,5 +536,15 @@ describe('lifecycle', () => {
     await h!.app.close();
     await pending;
     expect(fs.existsSync(path.join(h!.app.artifacts.dir, DESCRIPTOR_FILE))).toBe(false);
+  });
+
+  test('closing the app while a status long-poll is waiting resolves immediately without stalling', async () => {
+    const c = await start();
+    const s0 = json<{ changeSeq: number }>(await c.api('/api/status'));
+    const t0 = Date.now();
+    const pending = c.api(`/api/status?since=${s0.changeSeq}&waitMs=9000`).catch(() => undefined);
+    await h!.app.close();
+    await pending;
+    expect(Date.now() - t0).toBeLessThan(1500);
   });
 });

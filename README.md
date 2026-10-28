@@ -903,6 +903,17 @@ The server is a local process: it calls the APIs you configured directly and kee
 
 **Session lifecycle.** By default a normal shutdown deletes the session directory and the next start deletes directories left by a crashed process. `files.retention` changes this: `keepOnExit` keeps the directory and marks it as ended on purpose, `crashedSessionMaxAgeHours` keeps crash leftovers for that long, and `maxRetainedBytes` trims retained sessions oldest first. Shutdown waits for captures and reads that are running and does not delete files under them.
 
+### Local request inspector
+
+Set `inspector.enabled: true` in the API config to enable the optional read-only browser inspector. It binds only to loopback. Open the `url` from the current artifact session's `inspector.json` locally; the descriptor is mode 0600 and its URL carries a session token. Do not paste that URL into chat or logs. The inspector is separate from the stdio MCP transport.
+
+The unified timeline groups tool actions with their HTTP requests and updates automatically. Search, scope and service/purpose/status filters apply across all records still retained in the trace, including matches older than the first 200 records. **Load older records** follows bounded cursor pages; `inspector.timelineLimit` caps each page, not the total history you can browse. Parent actions may be included again as context and are deduplicated by the UI. Evicted records cannot be recovered by pagination.
+
+`GET /api/feed` returns `calls`, `exchanges`, trace status and an optional `nextCursor`. Send that cursor with the same filters to continue; cursors are tied to the trace session and filter set. Calls and exchanges are ordered by sequence; context parents do not consume a primary record slot. Filtering scans bounded trace pages rather than collecting the whole index in memory. Sparse searches and deep continuation pages can therefore take longer on a large retained index.
+
+Pause freezes timeline synchronization; Resume catches up using the active filters and loaded depth. Selecting another row supersedes pending detail responses and live refreshes, so an older request cannot replace the current detail. Request/response bodies stay paged, and injected credentials remain unrecorded. Explicitly revealing agent-supplied secrets or opening auth-response artifacts can expose sensitive local data.
+
+
 ### Limitations
 
 - A local MCP server over stdio. It is not a hosted gateway or an HTTP MCP server.
@@ -983,6 +994,19 @@ npm audit --omit=dev --audit-level=high
 Build before the integration tests and the smoke test, because some of them run the compiled CLI over stdio. Tests use a loopback backend, synthetic data and self-signed certificates meant only for tests. No real credentials are needed. Run `npm run gen:notices` to update the third-party notices when dependencies change.
 
 `npm test` includes both unit and integration tests; `npm run test:integration` is an optional subset, not an additional gate. CI also validates the configuration cookbook with synthetic sources and rejects changes produced by `gen:schema` that were not committed. After changing the config schema, regenerate and include `config.schema.json` in your change.
+
+For Inspector changes, regenerate embedded assets before building, then run `node tests/inspector-smoke.mjs`. Use `node tests/inspector-smoke.mjs --hold` for browser verification against the compiled CLI and a synthetic backend. The harness prints only its descriptor path, not the token URL. While held, newline-delimited JSON on stdin can generate real MCP traffic:
+
+```jsonl
+{"id":"seed","action":"seed","count":230}
+{"id":"one","action":"invoke","operation":"GET /widgets/{id}","input":{"path":{"id":7}}}
+{"id":"slow","action":"start","operation":"GET /widgets/{id}","input":{"path":{"id":7},"query":{"hold":"1"}}}
+{"id":"release","action":"release"}
+{"action":"stop"}
+```
+
+Each completed invocation emits `command_done` with trace IDs. `start` runs without blocking the command reader; `release` completes held widget responses, allowing deterministic in-flight/live-refresh checks. Stop or Ctrl-C closes the MCP process and removes the descriptor.
+
 
 Tag publication calls the same nine-cell CI matrix on the tag's commit and waits for every cell to pass. Only then does the publish job build and verify its own tarball, check its SHA-256 companion and publish those exact bytes through npm trusted publishing. The tag must match the package version and its commit must belong to `main`.
 

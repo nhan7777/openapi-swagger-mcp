@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -42,6 +43,7 @@ const canaryOrigin = `http://127.0.0.1:${canary.address().port}`;
 
 // ---- business backend ---------------------------------------------------------------------------------------------
 const seen = [];
+const heldResponses = [];
 let meCalls = 0;
 const backend = http.createServer((req, res) => {
   const chunks = [];
@@ -57,7 +59,11 @@ const backend = http.createServer((req, res) => {
       meCalls++;
       if (req.headers.authorization === 'Bearer AT-1' && meCalls === 2) json(401, { error: 'expired' });
       else json(200, { user: 'smoke' }, { 'x-session-token': 'RESP-SECRET-1' });
-    } else if (u.pathname === '/widgets/7') json(200, { id: 7, name: 'widget', apiKeyEcho: u.searchParams.get('api_key') });
+    } else if (u.pathname === '/widgets/7') {
+      const respond = () => json(200, { id: 7, name: 'widget', apiKeyEcho: u.searchParams.get('api_key') });
+      if (hold && u.searchParams.get('hold') === '1') heldResponses.push(respond);
+      else respond();
+    }
     else if (u.pathname === '/items') json(201, { ok: true });
     else if (u.pathname === '/redirect') res.writeHead(302, { location: '/widgets/7' }).end();
     else if (u.pathname === '/big') res.writeHead(200, { 'content-type': 'application/json' }).end(BIG);
@@ -211,7 +217,11 @@ try {
 
   // ---- timeline, filters, relations
   assert.equal((await api('/api/meta')).json.readOnly, true);
+  assert.deepEqual((await api('/api/meta')).json.services, ['smoke']);
   assert.equal((await api('/api/status')).json.state, 'ok');
+  const feed = (await api('/api/feed?limit=200')).json;
+  assert.ok(feed.calls.some((c) => c.label === 'invoke_operation' && c.requestCount >= 1), 'unified feed includes calls with request counts');
+  assert.ok(feed.exchanges.some((x) => x.label === 'business' && x.callId), 'unified feed includes linked exchanges');
   const calls = (await api('/api/calls?limit=200')).json;
   assert.ok(calls.items.some((c) => c.label === 'invoke_operation') && calls.items.some((c) => c.label === 'authenticate'));
   const exch = (await api('/api/exchanges?limit=200')).json.items;
@@ -278,12 +288,54 @@ try {
 
   console.log(`inspector smoke checks passed (descriptor ${descriptorPath})`);
   if (hold) {
-    // The URL (with token) is in the descriptor only. Print where to find it and what the browser should look at.
-    console.log(JSON.stringify({ ready: true, descriptor: descriptorPath, backend: origin, canary: canaryOrigin, canaryHits: 'GET /__canary-hits on nothing: read from this process; expected 0', hint: 'open the url field of the descriptor in a browser; Ctrl-C to stop' }));
+    // Commands on stdin drive real MCP invocations during browser verification, never inspector writes.
+    // {"id":"seed","action":"seed","count":230} or
+    // {"id":"one","action":"invoke","operation":"GET /widgets/{id}","input":{"path":{"id":7}}}
+    console.log(JSON.stringify({ ready: true, descriptor: descriptorPath, backend: origin, canary: canaryOrigin, hint: 'Use stdin seed/invoke commands; Ctrl-C to stop.' }));
     const stop = Promise.withResolvers();
     process.once('SIGINT', stop.resolve);
     process.once('SIGTERM', stop.resolve);
+    const input = readline.createInterface({ input: process.stdin });
+    const running = [];
+    const commands = (async () => {
+      for await (const line of input) {
+        let command;
+        try {
+          command = JSON.parse(line);
+          if (command.action === 'stop') { stop.resolve(); break; }
+          if (command.action === 'release') {
+            for (const respond of heldResponses.splice(0)) respond();
+            console.log(JSON.stringify({ event: 'command_done', id: command.id }));
+            continue;
+          }
+          if (command.action === 'start') {
+            const id = command.id;
+            const run = op(command.operation, { input: command.input, auth: { mode: 'anonymous' } }).then(
+              result => console.log(JSON.stringify({ event: 'command_done', id, isError: result.isError, trace: result.data.trace })),
+              () => console.log(JSON.stringify({ event: 'command_failed', id })),
+            );
+            running.push(run);
+            continue;
+          }
+          const count = command.action === 'seed' ? Math.min(300, Math.max(1, Number(command.count) || 1)) : 1;
+          let result;
+          for (let n = 0; n < count; n++) {
+            result = await op(command.action === 'seed' ? 'GET /widgets/{id}' : command.operation, {
+              input: command.action === 'seed' ? { path: { id: 7 } } : command.input,
+              auth: { mode: 'anonymous' },
+            });
+          }
+          console.log(JSON.stringify({ event: 'command_done', id: command.id, isError: result.isError, trace: result.data.trace }));
+        } catch {
+          console.log(JSON.stringify({ event: 'command_failed', id: command?.id }));
+        }
+      }
+    })();
     await stop.promise;
+    input.close();
+    await commands;
+    for (const respond of heldResponses.splice(0)) respond();
+    await Promise.allSettled(running);
     console.log(`canary requests at exit: ${canaryHits.length}`);
   }
 } catch (e) {
@@ -291,6 +343,7 @@ try {
   console.error('inspector smoke FAILED:', e instanceof Error ? e.stack : e);
   console.error('--- cli stderr ---\n' + stderr);
 } finally {
+  for (const respond of heldResponses.splice(0)) respond();
   await client.close().catch(() => undefined);
   await new Promise((r) => backend.close(r));
   await new Promise((r) => canary.close(r));

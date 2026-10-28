@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import type { ArtifactStore } from '../artifacts/store.js';
 import { log } from '../log.js';
-import type { AuthRunId, CallId, CallFilter, ExchangePurpose, ExchangeRecord, RequestId, SendState, TimelineFilter, TraceReader } from '../trace/types.js';
+import type { AuthRunId, CallFilter, CallId, CallSummary, ExchangePurpose, ExchangeRecord, RequestId, SendState, TimelineFilter, TraceReader } from '../trace/types.js';
 import { ToolError } from '../types.js';
 import { errorInfo } from '../util.js';
 import { assignLanes, toAuthRunDto, toCallDetail, toCallItem, toExchangeDetail, toExchangeItem, toPolicyBlockDto, toStatusDto, type ServiceUrls } from './adapter.js';
@@ -11,7 +12,7 @@ import { ASSETS } from './assets.js';
 import { deriveText, formatJson, pageString } from './bytes.js';
 import { buildCurl } from './curl.js';
 import { removeDescriptor, writeDescriptor } from './descriptor.js';
-import type { BodyPageDto, ErrorDto, InputBodyDto, MetaDto, PageDto, SecretDto, TimelineItemDto } from './dto.js';
+import type { BodyPageDto, ErrorDto, InputBodyDto, MetaDto, PageDto, SecretDto, StatusDto, TimelineFeedDto, TimelineItemDto } from './dto.js';
 import { allowedHosts, checkRequest, CURSOR_RE, hashToken, ID_RE, newToken, SECURITY_HEADERS, type GuardCtx } from './guard.js';
 import { flattenHeaders } from './secrets.js';
 
@@ -48,9 +49,12 @@ const MAX_CONCURRENT_BODY = 4;
 /** Largest JSON metadata reply. Over this the server answers 413 OUTPUT_TOO_LARGE; it never truncates silently. Body pages have their own budget. */
 const META_BUDGET_BYTES = 512 * 1024;
 const DEFAULT_LIMIT = 50;
+const DEFAULT_FEED_LIMIT = 100;
+const MAX_WAIT_MS = 10_000;
 const PURPOSES: Record<ExchangePurpose, true> = { business: true, auth_recipe: true, spec_root: true, spec_ref: true };
 const SEND_STATES: Record<SendState, true> = { not_sent: true, in_flight: true, response_received: true, maybe_sent: true };
 const CALL_STATES: Record<'in_progress' | 'ok' | 'error', true> = { in_progress: true, ok: true, error: true };
+const FEED_KINDS: Record<'all' | 'call' | 'exchange', true> = { all: true, call: true, exchange: true };
 const TEXT_FILTER_MAX = 256;
 
 class HttpError extends Error {
@@ -113,16 +117,39 @@ function cursor(q: URLSearchParams): string | undefined {
 function defined<T extends object>(o: T): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 }
+function parseStatus(q: URLSearchParams): TimelineFilter['status'] {
+  const st = q.get('status');
+  if (st === null || st === '') return undefined;
+  if (st === 'error' || st === 'blocked') return st;
+  if (/^\d{3}$/.test(st)) return Number(st);
+  throw new HttpError(400, 'QUERY_INVALID', 'status must be an HTTP status, error or blocked');
+}
+function itemMatchesText(it: TimelineItemDto, needle: string): boolean {
+  const fields = [it.id, it.label, it.service, it.operation, it.method, it.pathDisplay, it.errorCode, it.callState, it.sendState, it.outcome, it.status !== undefined ? String(it.status) : undefined];
+  return fields.some((v) => v !== undefined && v.toLowerCase().includes(needle));
+}
+function isErrorOrBlockedItem(it: TimelineItemDto): boolean {
+  if (it.kind === 'call') return it.callState === 'error' || (it.policyBlockCount ?? 0) > 0;
+  return (
+    it.outcome === 'network_error' ||
+    it.outcome === 'aborted' ||
+    it.outcome === 'blocked' ||
+    it.sendState === 'not_sent' ||
+    it.sendState === 'maybe_sent' ||
+    (it.status !== undefined && it.status >= 400) ||
+    it.requestInvalid === true
+  );
+}
 
 export async function startInspector(opts: InspectorOptions, deps: InspectorDeps): Promise<InspectorHandle> {
   const token = newToken();
   const sessionDir = deps.artifacts.dir;
   const traceSessionId = path.basename(sessionDir);
   const inflight = new Set<Promise<unknown>>();
+  const statusWaiters = new Set<() => void>();
   let busy = 0;
   /** Set when close() starts: requests on still-open keep-alive connections are refused instead of reaching a closing artifact store. */
   let stopping = false;
-
   const server = http.createServer({ maxHeaderSize: 16384 });
   server.headersTimeout = 10_000;
   server.requestTimeout = 15_000;
@@ -226,6 +253,157 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     return undefined;
   }
 
+  async function waitStatus(q: URLSearchParams): Promise<StatusDto> {
+    const rawSince = q.get('since');
+    const since = rawSince === '-1' ? -1 : int(q, 'since', -1, 0, Number.MAX_SAFE_INTEGER);
+    const waitMs = int(q, 'waitMs', 0, 0, MAX_WAIT_MS);
+    if (waitMs > 0 && since >= 0 && !stopping && deps.trace.status().changeSeq === since) {
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = (): void => {
+          if (done) return;
+          done = true;
+          clearInterval(iv);
+          clearTimeout(to);
+          statusWaiters.delete(finish);
+          resolve();
+        };
+        const iv = setInterval(() => {
+          if (stopping || deps.trace.status().changeSeq !== since) finish();
+        }, 80);
+        const to = setTimeout(finish, waitMs);
+        statusWaiters.add(finish);
+      });
+    }
+    return toStatusDto(deps.trace.status());
+  }
+
+  function buildFeed(q: URLSearchParams, limitMax: number): TimelineFeedDto {
+    const kind = oneOf(q, 'kind', FEED_KINDS) ?? 'all';
+    const needle = text(q, 'q')?.trim().toLowerCase();
+    const service = text(q, 'service');
+    const operation = text(q, 'operation');
+    const tool = text(q, 'tool');
+    const purpose = oneOf(q, 'purpose', PURPOSES);
+    const status = parseStatus(q);
+    const sendState = oneOf(q, 'sendState', SEND_STATES);
+    const callState = oneOf(q, 'state', CALL_STATES);
+    const callId = q.get('callId') ? id<CallId>(q.get('callId')!, 'call_', 'callId') : undefined;
+    const requestId = q.get('requestId') ? id<RequestId>(q.get('requestId')!, 'req_', 'requestId') : undefined;
+    const authRunId = q.get('authRunId') ? id<AuthRunId>(q.get('authRunId')!, 'auth_', 'authRunId') : undefined;
+    const errorsOnly = q.get('errors') === '1' || q.get('errors') === 'true';
+    const limit = int(q, 'limit', Math.min(DEFAULT_FEED_LIMIT, limitMax), 1, limitMax);
+
+    const hasExchangeOnlyFilter = purpose !== undefined || status !== undefined || sendState !== undefined || authRunId !== undefined;
+    const callMatchesBase = (c: CallSummary, context = false): boolean => {
+      const item = toCallItem(c);
+      // Context parents inherit the child's service/operation match (auth recipes may target a different service).
+      if (!context && service !== undefined && item.service !== service) return false;
+      if (!context && operation !== undefined && item.operation !== operation) return false;
+      if (tool !== undefined && c.tool !== tool) return false;
+      if (callState !== undefined && c.state !== callState) return false;
+      if (callId !== undefined && c.callId !== callId) return false;
+      if (requestId !== undefined && deps.trace.getExchange(requestId)?.callId !== c.callId) return false;
+      return true;
+    };
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify(defined({ kind, needle, service, operation, tool, purpose, status, sendState, callState, callId, requestId, authRunId, errorsOnly })))
+      .digest('hex');
+    let before = Number.MAX_SAFE_INTEGER;
+    const rawCursor = cursor(q);
+    if (rawCursor) {
+      try {
+        const value: unknown = JSON.parse(Buffer.from(rawCursor, 'base64url').toString('utf8'));
+        if (
+          !value || typeof value !== 'object' ||
+          !('session' in value) || value.session !== deps.trace.traceSessionId ||
+          !('filter' in value) || value.filter !== fingerprint ||
+          !('before' in value) || typeof value.before !== 'number' || !Number.isSafeInteger(value.before) || value.before < 1
+        ) throw new Error('invalid cursor');
+        before = value.before;
+      } catch {
+        throw new HttpError(400, 'CURSOR_INVALID', 'cursor does not belong to this trace session and filter');
+      }
+    }
+
+    // Two bounded iterators scan the retained index, not only its first page. Filters are evaluated
+    // before accepting a primary record into the response. Resume scans skip newer sequence numbers;
+    // this deliberately trades O(index) traversal for stateless cursors and O(page + limit) memory.
+    // No raw trace cursor is decoded/reconstructed by the inspector.
+    function* callItems(): Generator<TimelineItemDto> {
+      if (kind === 'exchange') return;
+      const filter: CallFilter = defined({ tool, state: callState, callId, requestId });
+      let traceCursor: string | undefined;
+      do {
+        const page = deps.trace.listCalls({ filter, limit: 200, cursor: traceCursor });
+        for (const call of page.items) {
+          if (call.seq >= before || !callMatchesBase(call)) continue;
+          if (hasExchangeOnlyFilter) {
+            if (purpose !== undefined || sendState !== undefined || authRunId !== undefined) continue;
+            if (status === 'error' ? call.state !== 'error' : status === 'blocked' ? call.policyBlockCount === 0 : true) continue;
+          }
+          const item = toCallItem(call);
+          if (errorsOnly && !isErrorOrBlockedItem(item)) continue;
+          if (needle && !itemMatchesText(item, needle)) continue;
+          yield item;
+        }
+        traceCursor = page.nextCursor;
+      } while (traceCursor);
+    }
+    function* exchangeItems(): Generator<{ item: TimelineItemDto; parent?: TimelineItemDto }> {
+      if (kind === 'call') return;
+      const filter: TimelineFilter = defined({ service, operation, purpose, status, sendState, callId, requestId, authRunId });
+      let traceCursor: string | undefined;
+      do {
+        const page = deps.trace.listExchanges({ filter, limit: 200, cursor: traceCursor });
+        for (const exchange of page.items) {
+          if (exchange.seq >= before) continue;
+          const parent = exchange.callId ? deps.trace.getCall(exchange.callId) : undefined;
+          if ((tool !== undefined || callState !== undefined) && (!parent || !callMatchesBase(parent, true))) continue;
+          const item = toExchangeItem(exchange, deps.services);
+          if (errorsOnly && !isErrorOrBlockedItem(item)) continue;
+          const parentItem = parent && callMatchesBase(parent, true) ? toCallItem(parent) : undefined;
+          if (needle && !itemMatchesText(item, needle) && !(parentItem && itemMatchesText(parentItem, needle))) continue;
+          yield { item, ...(parentItem ? { parent: parentItem } : {}) };
+        }
+        traceCursor = page.nextCursor;
+      } while (traceCursor);
+    }
+    const callIterator = callItems();
+    const exchangeIterator = exchangeItems();
+    let call = callIterator.next();
+    let exchange = exchangeIterator.next();
+    const calls = new Map<string, TimelineItemDto>();
+    const exchanges: TimelineItemDto[] = [];
+    let accepted = 0;
+    let lastSeq = before;
+    while (!call.done || !exchange.done) {
+      // One-record lookahead determines whether another matching page really exists.
+      if (accepted === limit) break;
+      if (!call.done && (exchange.done || call.value.seq > exchange.value.item.seq)) {
+        calls.set(call.value.id, call.value);
+        lastSeq = call.value.seq;
+        call = callIterator.next();
+      } else if (!exchange.done) {
+        const { item, parent } = exchange.value;
+        exchanges.push(item);
+        if (kind === 'all' && parent) calls.set(parent.id, parent);
+        lastSeq = item.seq;
+        exchange = exchangeIterator.next();
+      }
+      accepted++;
+    }
+    const nextCursor = !call.done || !exchange.done
+      ? Buffer.from(JSON.stringify({ session: deps.trace.traceSessionId, filter: fingerprint, before: lastSeq })).toString('base64url')
+      : undefined;
+    return {
+      ...toStatusDto(deps.trace.status()),
+      calls: assignLanes([...calls.values()].sort((a, b) => b.seq - a.seq)),
+      exchanges: assignLanes(exchanges),
+      ...(nextCursor ? { nextCursor } : {}),
+    };
+  }
+
   // ---- routes ----------------------------------------------------------------------------------------------
   async function route(p: string, q: URLSearchParams): Promise<Reply> {
     const limitMax = Math.min(opts.timelineLimit, 200);
@@ -233,11 +411,17 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     const [a, b, c] = seg;
 
     if (a === 'meta' && seg.length === 1) {
-      const m: MetaDto = { traceSessionId: deps.trace.traceSessionId, version: deps.version, readOnly: true, limits: { pageBytes, formatMaxBytes: opts.formatMaxBytes, timelineLimit: limitMax } };
+      const m: MetaDto = {
+        traceSessionId: deps.trace.traceSessionId,
+        version: deps.version,
+        readOnly: true,
+        services: [...deps.services.keys()].sort(),
+        limits: { pageBytes, formatMaxBytes: opts.formatMaxBytes, timelineLimit: limitMax },
+      };
       return ok(m);
     }
-    if (a === 'status' && seg.length === 1) return ok(toStatusDto(deps.trace.status()));
-
+    if (a === 'status' && seg.length === 1) return ok(await waitStatus(q));
+    if (a === 'feed' && seg.length === 1) return ok(buildFeed(q, limitMax));
     if (a === 'calls' && seg.length === 1) {
       const filter: CallFilter = defined({
         service: text(q, 'service'),
@@ -273,13 +457,7 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     }
 
     if (a === 'exchanges' && seg.length === 1) {
-      const st = q.get('status');
-      let status: TimelineFilter['status'];
-      if (st !== null && st !== '') {
-        if (st === 'error' || st === 'blocked') status = st;
-        else if (/^\d{3}$/.test(st)) status = Number(st);
-        else throw new HttpError(400, 'QUERY_INVALID', 'status must be an HTTP status, error or blocked');
-      }
+      const status = parseStatus(q);
       const filter: TimelineFilter = defined({
         service: text(q, 'service'),
         operation: text(q, 'operation'),
@@ -417,6 +595,7 @@ export async function startInspector(opts: InspectorOptions, deps: InspectorDeps
     close(): Promise<void> {
       closing ??= (async () => {
         stopping = true;
+        for (const w of statusWaiters) w();
         await removeDescriptor(sessionDir).catch(() => undefined);
         const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
         server.closeIdleConnections();
