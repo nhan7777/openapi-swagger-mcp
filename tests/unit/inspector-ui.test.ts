@@ -191,7 +191,7 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(ui.storage.get('oasm-inspector-theme')).toBe('auto');
   });
 
-  test('exchange detail defaults to side-by-side Request + Response split view and supports Copy URL, Copy Request, and Copy Response', async () => {
+  test('exchange detail defaults to side-by-side Request + Response split view, supports Copy URL/Path/Domain, copies pure Request/Response bodies, hides body copy buttons when empty, and auto-loads cURL', async () => {
     const ui = await boot();
     const exItem = item('exchange', 'req_42', 18);
     const sel = ui.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
@@ -224,7 +224,6 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
       hasInput: false,
     });
     await sel;
-    // Resolve auto-loaded request and response body previews
     while (ui.pending.length > 0) {
       const req = ui.pending.shift()!;
       if (req.path.includes('role=request-body')) {
@@ -235,45 +234,70 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
       await ui.flush();
     }
 
-    // Verify side-by-side split cards are both rendered in the default view
     const detailNode = ui.node('detail');
     expect(detailNode.querySelectorAll('.split-card')).toHaveLength(2);
     expect(detailNode.textContent).toContain('"sku": "PRO-1"');
     expect(detailNode.textContent).toContain('"orderId": "ord_77"');
 
-    // 1. Copy URL button copies full URL with masked query safely
+    // 1. Copy URL, Copy Path, and Copy Domain buttons
     const copyUrlBtn = detailNode.querySelectorAll('[data-copy="url"]')[0]!;
+    const copyPathBtn = detailNode.querySelectorAll('[data-copy="path"]')[0]!;
+    const copyDomainBtn = detailNode.querySelectorAll('[data-copy="domain"]')[0]!;
     expect(copyUrlBtn).toBeDefined();
+    expect(copyPathBtn).toBeDefined();
+    expect(copyDomainBtn).toBeDefined();
+
     copyUrlBtn.click();
     await ui.flush();
     expect(ui.copied.at(-1)).toBe('http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
 
-    // 2. Copy Request button copies request line, masked headers, and request body
-    const copyReqBtn = detailNode.querySelectorAll('[data-copy="request"]')[0]!;
-    expect(copyReqBtn).toBeDefined();
-    copyReqBtn.click();
+    copyPathBtn.click();
+    await ui.flush();
+    expect(ui.copied.at(-1)).toBe('/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
+
+    copyDomainBtn.click();
+    await ui.flush();
+    expect(ui.copied.at(-1)).toBe('http://localhost:9000');
+
+    // 2. Exactly one Copy Request Body and one Copy Response Body button (no duplicate pair), copying pure body
+    const copyReqBtns = detailNode.querySelectorAll('[data-copy="request"]');
+    const copyResBtns = detailNode.querySelectorAll('[data-copy="response"]');
+    expect(copyReqBtns).toHaveLength(1);
+    expect(copyResBtns).toHaveLength(1);
+
+    copyReqBtns[0]!.click();
     for (const p of ui.pending.splice(0)) {
       p.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
     }
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('POST http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
-    expect(ui.copied.at(-1)).toContain('content-type: application/json');
-    expect(ui.copied.at(-1)).toContain('authorization: <unrecorded: credential>');
     expect(ui.copied.at(-1)).toContain('"sku": "PRO-1"');
+    expect(ui.copied.at(-1)).not.toContain('POST http://localhost:9000');
 
-    // 3. Copy Response button copies status line, headers, and response body
-    const copyResBtn = detailNode.querySelectorAll('[data-copy="response"]')[0]!;
-    expect(copyResBtn).toBeDefined();
-    copyResBtn.click();
+    copyResBtns[0]!.click();
     for (const p of ui.pending.splice(0)) {
       p.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
     }
     await ui.flush();
-    expect(ui.copied.at(-1)).toContain('HTTP 201');
-    expect(ui.copied.at(-1)).toContain('content-type: application/json');
     expect(ui.copied.at(-1)).toContain('"orderId": "ord_77"');
-  });
+    expect(ui.copied.at(-1)).not.toContain('HTTP 201');
 
+    // 3. Switching to cURL tab auto-loads cURL without a "Build cURL" button
+    const curlTab = detailNode.querySelectorAll('button').find((b) => b.textContent === 'cURL')!;
+    curlTab.click();
+    await ui.flush();
+    expect(detailNode.textContent).not.toContain('Build cURL');
+    ui.pending.shift()!.resolve({ command: "curl -X POST 'http://localhost:9000/api/v1/orders'", warnings: [], placeholders: [] });
+    await ui.flush();
+    expect(detailNode.textContent).toContain("curl -X POST 'http://localhost:9000/api/v1/orders'");
+
+    // 4. Selecting an exchange with no request/response bodies hides Copy Request Body and Copy Response Body
+    const emptyEx = item('exchange', 'req_empty', 5);
+    const selEmpty = ui.run<Promise<void>>(`select(${JSON.stringify(emptyEx)})`);
+    ui.pending.shift()!.resolve(detail(emptyEx));
+    await selEmpty;
+    expect(ui.node('detail').querySelectorAll('[data-copy="request"]')).toHaveLength(0);
+    expect(ui.node('detail').querySelectorAll('[data-copy="response"]')).toHaveLength(0);
+  });
   test('Copy Request and Copy Response page through all nextOffset body chunks and retain incomplete body diagnostics', async () => {
     const ui = await boot();
     const exItem = item('exchange', 'req_big', 45);
@@ -411,5 +435,103 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(urlBtn2.className).not.toContain('is-copied');
     expect(uiThrow.node('notice').textContent).toContain('COPY_FAILED');
     expect(uiThrow.root.querySelectorAll('textarea')).toHaveLength(0);
+  });
+
+  test('pending cURL and Auth run tabs survive same-exchange live refresh while stale selection errors stay suppressed', async () => {
+    const ui = await boot();
+    const a1 = { ...item('exchange', 'A', 10), authRunId: 'auth_1' };
+    const a2 = { ...item('exchange', 'A', 25), authRunId: 'auth_1' };
+    const a3 = { ...item('exchange', 'A', 40), authRunId: 'auth_1' };
+
+    const selA = ui.run<Promise<void>>(`select(${JSON.stringify(a1)})`);
+    ui.pending.shift()!.resolve(detail(a1));
+    await selA;
+
+    // 1. Open cURL tab and hold /api/exchanges/A/curl while same-exchange live refresh completes
+    const curlTab = ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'cURL')!;
+    curlTab.click();
+    await ui.flush();
+    const heldCurl = ui.pending.shift()!;
+    expect(heldCurl.path).toBe('/api/exchanges/A/curl');
+
+    ui.run(`S.exchanges = [${JSON.stringify(a2)}]`);
+    const refresh1 = ui.run<Promise<void>>('maybeRefreshSelectedDetail()');
+    ui.pending.shift()!.resolve(detail(a2));
+    await refresh1;
+
+    heldCurl.resolve({ command: "curl 'http://localhost/A'", warnings: [], placeholders: [] });
+    for (const p of ui.pending.splice(0)) {
+      if (p.path === '/api/exchanges/A/curl') p.resolve({ command: "curl 'http://localhost/A'", warnings: [], placeholders: [] });
+    }
+    await ui.flush();
+    expect(ui.node('detail').textContent).toContain("curl 'http://localhost/A'");
+    expect(ui.node('detail').textContent).not.toContain('Loading cURL command...');
+
+    // 2. Open Auth run tab and hold /api/auth-runs/auth_1 while same-exchange live refresh completes
+    const authTab = ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'Auth run')!;
+    authTab.click();
+    await ui.flush();
+    const heldAuth = ui.pending.shift()!;
+    expect(heldAuth.path).toBe('/api/auth-runs/auth_1');
+
+    ui.run(`S.exchanges = [${JSON.stringify(a3)}]`);
+    const refresh2 = ui.run<Promise<void>>('maybeRefreshSelectedDetail()');
+    ui.pending.shift()!.resolve(detail(a3));
+    await refresh2;
+
+    heldAuth.resolve({
+      authRunId: 'auth_1',
+      target: 'service:smoke',
+      action: 'refresh',
+      trigger: 'unauthorized',
+      startedAt: '2026-10-28T10:00:00Z',
+      durationMs: 12,
+      outcome: 'published',
+      captured: ['accessToken'],
+      requestIds: [],
+      joinedRequestIds: [],
+      joinedTruncated: false,
+      partial: false,
+    });
+    for (const p of ui.pending.splice(0)) {
+      if (p.path === '/api/auth-runs/auth_1') {
+        p.resolve({
+          authRunId: 'auth_1',
+          target: 'service:smoke',
+          action: 'refresh',
+          trigger: 'unauthorized',
+          startedAt: '2026-10-28T10:00:00Z',
+          durationMs: 12,
+          outcome: 'published',
+          captured: ['accessToken'],
+          requestIds: [],
+          joinedRequestIds: [],
+          joinedTruncated: false,
+          partial: false,
+        });
+      }
+    }
+    await ui.flush();
+    expect(ui.node('detail').textContent).toContain('captured: accessToken');
+    expect(ui.node('detail').textContent).not.toContain('Loading auth run...');
+
+    // 3. Re-select A, start cURL, switch to B, and verify stale cURL rejection/resolution never alters B or #notice
+    const selAAgain = ui.run<Promise<void>>(`select(${JSON.stringify(a3)})`);
+    ui.pending.shift()!.resolve(detail(a3));
+    await selAAgain;
+    ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'cURL')!.click();
+    await ui.flush();
+    const staleCurl = ui.pending.shift()!;
+
+    const b = item('exchange', 'B', 5);
+    const selB = ui.run<Promise<void>>(`select(${JSON.stringify(b)})`);
+    ui.pending.shift()!.resolve(detail(b));
+    await selB;
+    ui.node('notice').textContent = 'active notice';
+    staleCurl.reject(new Error('stale curl failed'));
+    await ui.flush();
+    expect(ui.node('notice').textContent).toBe('active notice');
+    expect(ui.node('detail').textContent).toContain('/B');
+    expect(ui.node('detail').textContent).not.toContain('/A');
   });
 });
