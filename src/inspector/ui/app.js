@@ -179,8 +179,8 @@ function copyBtn(label, copyKind, getText, primary = false) {
   return b;
 }
 
-function formatExchangeUrl(q) {
-  const base = `${q.url.origin}${q.url.basePath}${q.url.path}`;
+function formatExchangePath(q) {
+  const base = `${q.url.basePath || ''}${q.url.path || '/'}`;
   if (!q.query || q.query.length === 0) return base;
   const qs = q.query
     .map((f) => {
@@ -193,10 +193,12 @@ function formatExchangeUrl(q) {
   return `${base}?${qs}`;
 }
 
-function formatMaskedFieldLine(f) {
-  if (!f.masked) return `${f.name}: ${f.value ?? ''}`;
-  if (!f.recorded) return `${f.name}: <unrecorded${f.unrecordedReason ? `: ${f.unrecordedReason}` : ''}>`;
-  return `${f.name}: <redacted${f.length !== undefined ? `: ${f.length} bytes` : ''}>`;
+function formatExchangeUrl(q) {
+  return `${q.url.origin}${formatExchangePath(q)}`;
+}
+
+function hasCopyableBody(meta) {
+  return Boolean(meta?.available && (meta.length === undefined || meta.length > 0));
 }
 
 async function fetchBodySnapshot(id, role, meta) {
@@ -248,28 +250,6 @@ async function fetchBodySnapshot(id, role, meta) {
   return [bodyText, ...notes].filter(Boolean).join('\n');
 }
 
-async function formatExchangeRequestCopy(id, x) {
-  const q = x.request;
-  const lines = [`${q.method} ${formatExchangeUrl(q)}`];
-  for (const h of q.headers || []) lines.push(formatMaskedFieldLine(h));
-  for (const c of q.cookies || []) lines.push(`cookie: ${formatMaskedFieldLine(c)}`);
-  if (q.body?.available) {
-    const body = await fetchBodySnapshot(id, 'request-body', q.body);
-    if (body) lines.push('', body);
-  }
-  return lines.join('\n');
-}
-
-async function formatExchangeResponseCopy(id, x) {
-  if (!x.response) return `No HTTP response (${stateLabel(x.item)})`;
-  const lines = [`HTTP ${x.response.status}`];
-  for (const h of x.response.headers || []) lines.push(formatMaskedFieldLine(h));
-  if (x.response.body?.available) {
-    const body = await fetchBodySnapshot(id, 'response-body', x.response.body);
-    if (body) lines.push('', body);
-  }
-  return lines.join('\n');
-}
 
 async function api(path, params) {
   if (!S.token) throw new ApiError(401, 'TOKEN_MISSING', 'No session token. Open the inspector URL from the descriptor (it ends with #t=...).');
@@ -964,7 +944,7 @@ function bodyViewer(fetchPage, initialView) {
   return out;
 }
 
-function bodySection(title, meta, fetchPage, mayHaveTokens, autoLoad) {
+function bodySection(title, meta, fetchPage, mayHaveTokens, autoLoad, copyAction) {
   if (!meta) return [el('h3', {}, title), el('p', { class: 'muted' }, 'No body.')];
   const defaultView =
     autoLoad && !mayHaveTokens && meta.available
@@ -974,8 +954,9 @@ function bodySection(title, meta, fetchPage, mayHaveTokens, autoLoad) {
           ? 'text'
           : 'raw'
       : undefined;
+  const heading = el('h3', {}, title, ' ', mayHaveTokens ? el('span', { class: 'badge warn' }, 'may contain tokens') : undefined);
   return [
-    el('h3', {}, title, ' ', mayHaveTokens ? el('span', { class: 'badge warn' }, 'may contain tokens') : undefined),
+    copyAction ? el('div', { class: 'section-header' }, heading, copyAction) : heading,
     el(
       'p',
       { class: 'muted mono' },
@@ -1100,6 +1081,8 @@ async function showCall(it, d, current, previous) {
   if (!current()) return;
 
   const callTarget = [c.item.service, c.item.operation].filter(Boolean).join(' · ') || c.tool;
+  const hasArgs = Object.keys(c.args || {}).length > 0;
+  const hasSummary = Boolean(c.summary && Object.keys(c.summary).length > 0);
   const header = el(
     'div',
     { class: 'detail-header' },
@@ -1111,7 +1094,13 @@ async function showCall(it, d, current, previous) {
       stateBadge(c.item),
       badges(c.item),
       el('div', { class: 'url-breakdown mono' }, callTarget),
-      copyBtn('Copy URL', 'url', () => callTarget, true),
+      el(
+        'div',
+        { class: 'copy-actions' },
+        copyBtn('Copy Target', 'url', () => callTarget, true),
+        hasArgs ? copyBtn('Copy Args', 'request', () => JSON.stringify(c.args, null, 2)) : undefined,
+        hasSummary ? copyBtn('Copy Summary', 'response', () => JSON.stringify(c.summary, null, 2)) : undefined,
+      ),
     ),
     el(
       'div',
@@ -1125,12 +1114,6 @@ async function showCall(it, d, current, previous) {
         el('span', {}, c.startedAt),
         c.item.durationMs !== undefined ? el('span', {}, `${c.item.durationMs} ms`) : undefined,
         el('span', {}, `${c.requestCount} exchanges · ${c.authRunCount} auth runs · ${c.policyBlockCount} policy blocks`),
-      ),
-      el(
-        'div',
-        { class: 'copy-actions' },
-        copyBtn('Copy Request', 'request', () => JSON.stringify({ tool: c.tool, args: c.args }, null, 2)),
-        copyBtn('Copy Response', 'response', () => JSON.stringify(c.summary ?? { state: c.item.callState }, null, 2)),
       ),
     ),
   );
@@ -1182,8 +1165,10 @@ async function showExchange(id, d, current) {
   const x = await api(`/api/exchanges/${encodeURIComponent(id)}`);
   if (!current()) return;
   const q = x.request;
+  const reqHasBody = hasCopyableBody(q.body);
+  const resHasBody = hasCopyableBody(x.response?.body);
 
-  const buildRequestContents = (autoLoadBody) => [
+  const buildRequestContents = (autoLoadBody, withInlineCopy) => [
     fieldTable('Query Parameters', q.query, id, 'request', 'query'),
     fieldTable('Request Headers', q.headers, id, 'request', 'header'),
     fieldTable('Cookies', q.cookies, id, 'request', 'cookie'),
@@ -1195,10 +1180,11 @@ async function showExchange(id, d, current) {
       (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'request-body', view, offset, limit }),
       false,
       autoLoadBody,
+      withInlineCopy && reqHasBody ? copyBtn('Copy Request Body', 'request-tab', () => fetchBodySnapshot(id, 'request-body', q.body)) : undefined,
     ),
   ];
 
-  const buildResponseContents = () =>
+  const buildResponseContents = (withInlineCopy) =>
     x.response
       ? [
           el('p', { class: 'mono' }, `Status: HTTP ${x.response.status}${x.response.decodedEncodings.length ? ` · decoded: ${x.response.decodedEncodings.join(', ')}` : ''}`),
@@ -1209,6 +1195,7 @@ async function showExchange(id, d, current) {
             (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'response-body', view, offset, limit }),
             x.responseMayContainTokens,
             true,
+            withInlineCopy && resHasBody ? copyBtn('Copy Response Body', 'response-tab', () => fetchBodySnapshot(id, 'response-body', x.response.body)) : undefined,
           ),
         ]
       : [el('p', { class: 'muted' }, `No HTTP response was received (${stateLabel(x.item)}).`)];
@@ -1230,9 +1217,9 @@ async function showExchange(id, d, current) {
             'div',
             { class: 'split-card-header' },
             el('div', { class: 'split-card-title' }, el('span', { class: 'badge accent' }, 'REQUEST'), el('span', { class: 'mono muted' }, reqMetaSummary)),
-            copyBtn('Copy Request', 'request-card', () => formatExchangeRequestCopy(id, x)),
+            reqHasBody ? copyBtn('Copy Request Body', 'request', () => fetchBodySnapshot(id, 'request-body', q.body)) : undefined,
           ),
-          el('div', { class: 'split-card-body' }, ...buildRequestContents(true).flat(2).filter(Boolean)),
+          el('div', { class: 'split-card-body' }, ...buildRequestContents(true, false).flat(2).filter(Boolean)),
         ),
         el(
           'section',
@@ -1246,14 +1233,14 @@ async function showExchange(id, d, current) {
               stateBadge(x.item),
               el('span', { class: 'mono muted' }, resMetaSummary),
             ),
-            copyBtn('Copy Response', 'response-card', () => formatExchangeResponseCopy(id, x)),
+            resHasBody ? copyBtn('Copy Response Body', 'response', () => fetchBodySnapshot(id, 'response-body', x.response.body)) : undefined,
           ),
-          el('div', { class: 'split-card-body' }, ...buildResponseContents().flat(2).filter(Boolean)),
+          el('div', { class: 'split-card-body' }, ...buildResponseContents(false).flat(2).filter(Boolean)),
         ),
       ),
     ],
-    Request: () => buildRequestContents(false),
-    Response: () => buildResponseContents(),
+    Request: () => buildRequestContents(true, true),
+    Response: () => buildResponseContents(true),
     Diagnostics: () =>
       ['request', 'response'].flatMap((side) => {
         const dg = x.diagnostics?.[side];
@@ -1268,23 +1255,27 @@ async function showExchange(id, d, current) {
             const slot = el('div', {}, el('p', { class: 'muted' }, 'Loading auth run...'));
             guarded(async () => {
               const r = await api(`/api/auth-runs/${encodeURIComponent(x.item.authRunId)}`);
+              if (!current()) return;
               clear(slot);
               slot.append(authRunView(r));
-            });
+            }, current);
             return [slot];
           },
         }
       : {}),
     cURL: () => {
-      const slot = el('div');
-      const loadCurl = async () => {
+      const slot = el('div', {}, el('p', { class: 'muted' }, 'Loading cURL command...'));
+      guarded(async () => {
         const r = await api(`/api/exchanges/${encodeURIComponent(id)}/curl`);
+        if (!current()) return;
         clear(slot);
         slot.append(
-          r.warnings.length ? el('div', { class: 'warnings' }, r.warnings.map((w) => el('div', {}, w))) : undefined,
-          el('pre', {}, r.command),
-          copyBtn('Copy command', 'curl', () => r.command),
+          el('div', { class: 'section-header' }, el('h3', {}, 'cURL Command'), copyBtn('Copy cURL', 'curl', () => r.command, true)),
         );
+        if (r.warnings.length) {
+          slot.append(el('div', { class: 'warnings' }, r.warnings.map((w) => el('div', {}, w))));
+        }
+        slot.append(el('pre', {}, r.command));
         if (r.placeholders.length) {
           slot.append(
             el('h3', {}, 'Environment variables to set'),
@@ -1295,8 +1286,7 @@ async function showExchange(id, d, current) {
             ),
           );
         }
-      };
-      slot.append(btn('Build cURL', loadCurl));
+      }, current);
       return [slot];
     },
   };
@@ -1334,10 +1324,15 @@ async function showExchange(id, d, current) {
         q.url.basePath ? el('span', { class: 'url-base' }, q.url.basePath) : undefined,
         el('span', { class: 'url-path' }, q.url.path),
         queryPreview ? el('span', { class: 'url-query' }, queryPreview) : undefined,
-        el('span', { class: 'muted' }, `  (origin: ${q.url.origin} · basePath: ${q.url.basePath || '(none)'} · path: ${q.url.path})`),
       ),
       badges(x.item),
-      copyBtn('Copy URL', 'url', () => formatExchangeUrl(q), true),
+      el(
+        'div',
+        { class: 'copy-actions' },
+        copyBtn('Copy URL', 'url', () => formatExchangeUrl(q), true),
+        copyBtn('Copy Path', 'path', () => formatExchangePath(q)),
+        copyBtn('Copy Domain', 'domain', () => q.url.origin),
+      ),
     ),
     el(
       'div',
@@ -1348,20 +1343,21 @@ async function showExchange(id, d, current) {
         el('span', {}, id),
         el('span', {}, `service: ${x.item.service}`),
         x.item.operation ? el('span', {}, `op: ${x.item.operation}`) : undefined,
+        q.url.basePath ? el('span', {}, `basePath: ${q.url.basePath}`) : undefined,
         el('span', {}, x.startedAt),
         x.item.durationMs !== undefined ? el('span', {}, `${x.item.durationMs} ms`) : undefined,
         x.item.parentId ? el('span', {}, `parent: ${x.item.parentId}`) : undefined,
       ),
-      el(
-        'div',
-        { class: 'copy-actions' },
-        x.item.callId
-          ? btn(`Open parent tool: ${parentCall?.label ?? x.item.callId}`, () => select({ kind: 'call', id: x.item.callId }))
-          : undefined,
-        x.item.parentId ? btn('Go to parent exchange', () => openExchange(x.item.parentId)) : undefined,
-        copyBtn('Copy Request', 'request', () => formatExchangeRequestCopy(id, x)),
-        copyBtn('Copy Response', 'response', () => formatExchangeResponseCopy(id, x)),
-      ),
+      x.item.callId || x.item.parentId
+        ? el(
+            'div',
+            { class: 'copy-actions' },
+            x.item.callId
+              ? btn(`Open parent tool: ${parentCall?.label ?? x.item.callId}`, () => select({ kind: 'call', id: x.item.callId }))
+              : undefined,
+            x.item.parentId ? btn('Go to parent exchange', () => openExchange(x.item.parentId)) : undefined,
+          )
+        : undefined,
     ),
   );
 
