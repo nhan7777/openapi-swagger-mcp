@@ -124,21 +124,31 @@ function buildThemeSwitcher() {
 
 async function copyText(text) {
   const str = String(text);
+  let clipErr;
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(str);
       return;
-    } catch {}
+    } catch (e) {
+      clipErr = e;
+    }
   }
-  try {
+  if (typeof document !== 'undefined' && document.body && typeof document.execCommand === 'function') {
     const ta = document.createElement('textarea');
     ta.value = str;
+    ta.setAttribute('readonly', '');
     ta.className = 'sr';
-    document.body?.append(ta);
-    ta.select?.();
-    document.execCommand?.('copy');
-    ta.remove?.();
-  } catch {}
+    document.body.append(ta);
+    try {
+      ta.select?.();
+      if (document.execCommand('copy') === true) return;
+    } catch (e) {
+      clipErr = clipErr ?? e;
+    } finally {
+      ta.remove?.();
+    }
+  }
+  throw new ApiError(0, 'COPY_FAILED', clipErr instanceof Error && clipErr.message ? clipErr.message : 'Clipboard write failed.');
 }
 
 function copyBtn(label, copyKind, getText, primary = false) {
@@ -191,21 +201,51 @@ function formatMaskedFieldLine(f) {
 
 async function fetchBodySnapshot(id, role, meta) {
   if (!meta?.available) return '';
-  const preferredView =
+  let view =
     meta.kind === 'json' && (meta.length ?? 0) <= (S.meta?.limits?.formatMaxBytes ?? 524288)
       ? 'formatted'
       : meta.kind === 'text' || meta.kind === 'json'
         ? 'text'
         : 'raw';
-  const p = await api(`/api/exchanges/${encodeURIComponent(id)}/body`, {
-    role,
-    view: preferredView,
-    offset: 0,
-    limit: S.meta?.limits?.pageBytes ?? 16384,
-  });
-  if (p.formatted === 'unavailable') return `[formatted view unavailable: ${p.reason}]`;
-  if (p.view === 'raw') return hexView(fromBase64(p.bytesBase64), p.offset);
-  return p.text || '';
+  const limit = S.meta?.limits?.pageBytes ?? 16384;
+  const parts = [];
+  let offset = 0;
+  let complete = meta.complete !== false;
+  let escaped = 0;
+  let totalBytes = meta.length;
+  let formattedNote;
+  while (offset !== undefined) {
+    const p = await api(`/api/exchanges/${encodeURIComponent(id)}/body`, {
+      role,
+      view,
+      offset,
+      limit,
+    });
+    if (p.formatted === 'unavailable') {
+      if (offset === 0 && view === 'formatted') {
+        view = meta.kind === 'binary' ? 'raw' : 'text';
+        continue;
+      }
+      return `[formatted view unavailable: ${p.reason}]`;
+    }
+    if (p.complete === false) complete = false;
+    if (typeof p.totalBytes === 'number') totalBytes = p.totalBytes;
+    if (typeof p.escaped === 'number') escaped += p.escaped;
+    if (p.note) formattedNote = p.note;
+    if (p.view === 'raw') parts.push(hexView(fromBase64(p.bytesBase64), p.offset));
+    else parts.push(p.text || '');
+    if (p.nextOffset === undefined || p.nextOffset <= offset) break;
+    offset = p.nextOffset;
+  }
+  const bodyText = view === 'raw' ? parts.join('\n') : parts.join('');
+  const notes = [];
+  if (view === 'formatted' && formattedNote) notes.push(`[derived formatted view: ${formattedNote}]`);
+  else if (view === 'text') notes.push(`[derived text view (not original raw bytes)${totalBytes !== undefined ? `: ${totalBytes} bytes` : ''}; ${escaped} escaped]`);
+  else if (view === 'raw') notes.push(`[derived raw hex view${totalBytes !== undefined ? `: ${totalBytes} bytes` : ''}]`);
+  if (!complete || meta.incompleteReason) {
+    notes.push(`[stored body is incomplete${meta.incompleteReason ? `: ${meta.incompleteReason}` : ''}]`);
+  }
+  return [bodyText, ...notes].filter(Boolean).join('\n');
 }
 
 async function formatExchangeRequestCopy(id, x) {
@@ -1243,7 +1283,7 @@ async function showExchange(id, d, current) {
         slot.append(
           r.warnings.length ? el('div', { class: 'warnings' }, r.warnings.map((w) => el('div', {}, w))) : undefined,
           el('pre', {}, r.command),
-          btn('Copy command', () => navigator.clipboard.writeText(r.command)),
+          copyBtn('Copy command', 'curl', () => r.command),
         );
         if (r.placeholders.length) {
           slot.append(

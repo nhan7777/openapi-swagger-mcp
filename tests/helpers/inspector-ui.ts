@@ -53,6 +53,13 @@ class Element {
   }
   click(): void { for (const fn of this.listeners.get('click') ?? []) fn(); }
   focus(): void {}
+  select(): void {}
+  remove(): void {
+    if (this.parent) {
+      this.parent.nodes = this.parent.nodes.filter((old) => old !== this);
+      this.parent = undefined;
+    }
+  }
   querySelectorAll(selector: string): Element[] {
     const matches = (node: Element, simple: string): boolean => {
       if (simple.startsWith('.')) return node.className.split(' ').includes(simple.slice(1));
@@ -76,7 +83,14 @@ class Element {
   }
 }
 
-export function inspectorUi({ deferInput = false, initialTheme }: { deferInput?: boolean; initialTheme?: string } = {}) {
+export interface InspectorUiOptions {
+  deferInput?: boolean;
+  initialTheme?: string;
+  writeText?: (text: string) => Promise<void>;
+  execCommand?: (cmd: string, textarea?: Element) => boolean;
+}
+
+export function inspectorUi({ deferInput = false, initialTheme, writeText, execCommand }: InspectorUiOptions = {}) {
   const documentRoot = new Element('HTML');
   for (const id of ['notice', 'live-pill', 'live-text', 'live-toggle', 'theme-switcher', 'banner', 'filters', 'list', 'timeline-pane', 'timeline-counts', 'more', 'detail', 'layout', 'trace-session']) {
     const node = new Element('DIV');
@@ -90,9 +104,23 @@ export function inspectorUi({ deferInput = false, initialTheme }: { deferInput?:
   const context = vm.createContext({
     document: {
       documentElement: documentRoot,
+      body: documentRoot,
       createElement: (tag: string) => new Element(tag.toUpperCase()),
       getElementById: (id: string) => documentRoot.querySelectorAll(`#${id}`)[0],
       querySelectorAll: (selector: string) => documentRoot.querySelectorAll(selector),
+      execCommand: (cmd: string) => {
+        const ta = documentRoot.querySelectorAll('textarea')[0];
+        if (execCommand) {
+          const ok = execCommand(cmd, ta);
+          if (ok && ta) copied.push(ta.value);
+          return ok;
+        }
+        if (ta) {
+          copied.push(ta.value);
+          return true;
+        }
+        return false;
+      },
       activeElement: null,
     },
     window: { addEventListener: () => {} },
@@ -105,7 +133,7 @@ export function inspectorUi({ deferInput = false, initialTheme }: { deferInput?:
     },
     navigator: {
       clipboard: {
-        writeText: async (text: string) => { copied.push(String(text)); },
+        writeText: writeText ?? (async (text: string) => { copied.push(String(text)); }),
       },
     },
     URLSearchParams,
