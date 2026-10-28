@@ -169,3 +169,247 @@ test('live call refresh keeps loaded input but retries input that was not availa
   await ui.flush();
   expect(ui.node('detail').textContent).toContain('recorded on completion');
 });
+
+describe('hybrid workbench UI: theme switcher, split Request+Response view, and 3 copy actions', () => {
+  test('theme switcher toggles Auto, Light, and Dark modes and persists in localStorage', async () => {
+    const ui = await boot();
+    expect(ui.root.getAttribute('data-theme')).toBeNull();
+    const darkBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="dark"]')[0]!;
+    expect(darkBtn).toBeDefined();
+    darkBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBe('dark');
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('dark');
+
+    const lightBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="light"]')[0]!;
+    lightBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBe('light');
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('light');
+
+    const autoBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="auto"]')[0]!;
+    autoBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBeNull();
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('auto');
+  });
+
+  test('exchange detail defaults to side-by-side Request + Response split view and supports Copy URL, Copy Request, and Copy Response', async () => {
+    const ui = await boot();
+    const exItem = item('exchange', 'req_42', 18);
+    const sel = ui.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    ui.pending.shift()!.resolve({
+      item: exItem,
+      purpose: 'business',
+      startedAt: '2026-10-28T10:00:00Z',
+      request: {
+        method: 'POST',
+        url: { origin: 'http://localhost:9000', basePath: '/api/v1', path: '/orders' },
+        query: [
+          { name: 'dryRun', masked: false, recorded: true, index: 0, value: 'false' },
+          { name: 'api_key', masked: true, recorded: true, index: 1, length: 12 },
+        ],
+        headers: [
+          { name: 'content-type', masked: false, recorded: true, index: 0, value: 'application/json' },
+          { name: 'authorization', masked: true, recorded: false, index: 1, unrecordedReason: 'credential' },
+        ],
+        cookies: [],
+        transportAdded: ['host'],
+        body: { contentType: 'application/json', length: 24, available: true, kind: 'json', complete: true },
+      },
+      response: {
+        status: 201,
+        headers: [{ name: 'content-type', masked: false, recorded: true, index: 0, value: 'application/json' }],
+        decodedEncodings: [],
+        body: { contentType: 'application/json', length: 29, available: true, kind: 'json', complete: true },
+      },
+      responseMayContainTokens: false,
+      hasInput: false,
+    });
+    await sel;
+    // Resolve auto-loaded request and response body previews
+    while (ui.pending.length > 0) {
+      const req = ui.pending.shift()!;
+      if (req.path.includes('role=request-body')) {
+        req.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
+      } else if (req.path.includes('role=response-body')) {
+        req.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
+      }
+      await ui.flush();
+    }
+
+    // Verify side-by-side split cards are both rendered in the default view
+    const detailNode = ui.node('detail');
+    expect(detailNode.querySelectorAll('.split-card')).toHaveLength(2);
+    expect(detailNode.textContent).toContain('"sku": "PRO-1"');
+    expect(detailNode.textContent).toContain('"orderId": "ord_77"');
+
+    // 1. Copy URL button copies full URL with masked query safely
+    const copyUrlBtn = detailNode.querySelectorAll('[data-copy="url"]')[0]!;
+    expect(copyUrlBtn).toBeDefined();
+    copyUrlBtn.click();
+    await ui.flush();
+    expect(ui.copied.at(-1)).toBe('http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
+
+    // 2. Copy Request button copies request line, masked headers, and request body
+    const copyReqBtn = detailNode.querySelectorAll('[data-copy="request"]')[0]!;
+    expect(copyReqBtn).toBeDefined();
+    copyReqBtn.click();
+    for (const p of ui.pending.splice(0)) {
+      p.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
+    }
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('POST http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
+    expect(ui.copied.at(-1)).toContain('content-type: application/json');
+    expect(ui.copied.at(-1)).toContain('authorization: <unrecorded: credential>');
+    expect(ui.copied.at(-1)).toContain('"sku": "PRO-1"');
+
+    // 3. Copy Response button copies status line, headers, and response body
+    const copyResBtn = detailNode.querySelectorAll('[data-copy="response"]')[0]!;
+    expect(copyResBtn).toBeDefined();
+    copyResBtn.click();
+    for (const p of ui.pending.splice(0)) {
+      p.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
+    }
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('HTTP 201');
+    expect(ui.copied.at(-1)).toContain('content-type: application/json');
+    expect(ui.copied.at(-1)).toContain('"orderId": "ord_77"');
+  });
+
+  test('Copy Request and Copy Response page through all nextOffset body chunks and retain incomplete body diagnostics', async () => {
+    const ui = await boot();
+    const exItem = item('exchange', 'req_big', 45);
+    const sel = ui.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    ui.pending.shift()!.resolve({
+      item: exItem,
+      purpose: 'business',
+      startedAt: '2026-10-28T10:00:00Z',
+      request: {
+        method: 'POST',
+        url: { origin: 'http://localhost:9000', basePath: '', path: '/upload' },
+        query: [],
+        headers: [{ name: 'content-type', masked: false, recorded: true, index: 0, value: 'text/plain' }],
+        cookies: [],
+        transportAdded: [],
+        body: { contentType: 'text/plain', length: 40, available: true, kind: 'text', complete: true },
+      },
+      response: {
+        status: 200,
+        headers: [{ name: 'content-type', masked: false, recorded: true, index: 0, value: 'application/json' }],
+        decodedEncodings: [],
+        body: {
+          contentType: 'application/json',
+          length: 900_000,
+          available: true,
+          kind: 'json',
+          complete: false,
+          incompleteReason: 'response_bytes_limit',
+        },
+      },
+      responseMayContainTokens: false,
+      hasInput: false,
+    });
+    await sel;
+    // Drain initial auto-load preview requests
+    while (ui.pending.length > 0) {
+      const req = ui.pending.shift()!;
+      req.resolve({ view: 'text', offset: 0, nextOffset: 16, totalBytes: 40, bytesBase64: '', artifactSha256: 'x', complete: true, text: 'preview-chunk-1;', escaped: 0 });
+      await ui.flush();
+    }
+
+    const detailNode = ui.node('detail');
+
+    // 1. Copy Request pages across 3 chunks until nextOffset is undefined
+    const copyReqBtn = detailNode.querySelectorAll('[data-copy="request"]')[0]!;
+    copyReqBtn.click();
+    await ui.flush();
+    expect(ui.pending[0]?.path).toContain('offset=0');
+    ui.pending.shift()!.resolve({ view: 'text', offset: 0, nextOffset: 16, totalBytes: 40, bytesBase64: '', artifactSha256: 'x', complete: true, text: 'REQ_PAGE_1__', escaped: 0 });
+    await ui.flush();
+    expect(ui.pending[0]?.path).toContain('offset=16');
+    ui.pending.shift()!.resolve({ view: 'text', offset: 16, nextOffset: 32, totalBytes: 40, bytesBase64: '', artifactSha256: 'x', complete: true, text: 'REQ_PAGE_2__', escaped: 0 });
+    await ui.flush();
+    expect(ui.pending[0]?.path).toContain('offset=32');
+    ui.pending.shift()!.resolve({ view: 'text', offset: 32, totalBytes: 40, bytesBase64: '', artifactSha256: 'x', complete: true, text: 'REQ_PAGE_3_END', escaped: 0 });
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('REQ_PAGE_1__REQ_PAGE_2__REQ_PAGE_3_END');
+
+    // 2. Copy Response on a >formatMaxBytes incomplete body pages through all text chunks and appends incomplete diagnostic
+    const copyResBtn = detailNode.querySelectorAll('[data-copy="response"]')[0]!;
+    copyResBtn.click();
+    await ui.flush();
+    expect(ui.pending[0]?.path).toContain('view=text');
+    expect(ui.pending[0]?.path).toContain('offset=0');
+    ui.pending.shift()!.resolve({ view: 'text', offset: 0, nextOffset: 16, totalBytes: 32, bytesBase64: '', artifactSha256: 'y', complete: false, text: '{"part1":1,', escaped: 2 });
+    await ui.flush();
+    expect(ui.pending[0]?.path).toContain('offset=16');
+    ui.pending.shift()!.resolve({ view: 'text', offset: 16, totalBytes: 32, bytesBase64: '', artifactSha256: 'y', complete: false, text: '"part2":2}', escaped: 1 });
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('{"part1":1,"part2":2}');
+    expect(ui.copied.at(-1)).toContain('[derived text view (not original raw bytes): 32 bytes; 3 escaped]');
+    expect(ui.copied.at(-1)).toContain('[stored body is incomplete: response_bytes_limit]');
+  });
+
+  test('copyBtn supports successful execCommand fallback and reports failure without Copied state when both Clipboard API and execCommand fail', async () => {
+    const exItem = item('exchange', 'req_fail', 5);
+
+    // 1. Successful execCommand fallback when Clipboard API rejects
+    const uiFallbackOk = inspectorUi({
+      writeText: async () => { throw new Error('Clipboard permission denied'); },
+      execCommand: () => true,
+    });
+    await uiFallbackOk.flush();
+    uiFallbackOk.pending.shift()!.resolve({ ...status, calls: [], exchanges: [] });
+    await uiFallbackOk.flush();
+    const selOk = uiFallbackOk.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    uiFallbackOk.pending.shift()!.resolve(detail(exItem));
+    await selOk;
+    const urlBtnOk = uiFallbackOk.node('detail').querySelectorAll('[data-copy="url"]')[0]!;
+    urlBtnOk.click();
+    await uiFallbackOk.flush();
+    expect(urlBtnOk.textContent).toBe('✓ Copied');
+    expect(urlBtnOk.className).toContain('is-copied');
+    expect(uiFallbackOk.copied.at(-1)).toBe('http://localhost/req_fail');
+    expect(uiFallbackOk.root.querySelectorAll('textarea')).toHaveLength(0);
+
+    // 2. Failed execCommand returning false
+    const uiFalse = inspectorUi({
+      writeText: async () => { throw new Error('Clipboard permission denied'); },
+      execCommand: () => false,
+    });
+    await uiFalse.flush();
+    uiFalse.pending.shift()!.resolve({ ...status, calls: [], exchanges: [] });
+    await uiFalse.flush();
+
+    const sel1 = uiFalse.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    uiFalse.pending.shift()!.resolve(detail(exItem));
+    await sel1;
+
+    const urlBtn1 = uiFalse.node('detail').querySelectorAll('[data-copy="url"]')[0]!;
+    urlBtn1.click();
+    await uiFalse.flush();
+    expect(urlBtn1.textContent).toBe('Copy URL');
+    expect(urlBtn1.className).not.toContain('is-copied');
+    expect(uiFalse.node('notice').textContent).toContain('COPY_FAILED');
+    expect(uiFalse.root.querySelectorAll('textarea')).toHaveLength(0);
+
+    // Also verify when execCommand throws an exception
+    const uiThrow = inspectorUi({
+      writeText: async () => { throw new Error('Clipboard blocked'); },
+      execCommand: () => { throw new Error('execCommand exploded'); },
+    });
+    await uiThrow.flush();
+    uiThrow.pending.shift()!.resolve({ ...status, calls: [], exchanges: [] });
+    await uiThrow.flush();
+
+    const sel2 = uiThrow.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    uiThrow.pending.shift()!.resolve(detail(exItem));
+    await sel2;
+
+    const urlBtn2 = uiThrow.node('detail').querySelectorAll('[data-copy="url"]')[0]!;
+    urlBtn2.click();
+    await uiThrow.flush();
+    expect(urlBtn2.textContent).toBe('Copy URL');
+    expect(urlBtn2.className).not.toContain('is-copied');
+    expect(uiThrow.node('notice').textContent).toContain('COPY_FAILED');
+    expect(uiThrow.root.querySelectorAll('textarea')).toHaveLength(0);
+  });
+});
