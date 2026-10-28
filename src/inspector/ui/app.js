@@ -2,6 +2,7 @@
 // ever placed with textContent / createElement. No innerHTML, no eval, no data-driven href/src/style. Shapes: src/inspector/dto.ts.
 
 const TOKEN_KEY = 'oasm-inspector-token';
+const THEME_KEY = 'oasm-inspector-theme';
 const ATTR_OK = { class: 1, id: 1, role: 1, type: 1, title: 1, scope: 1, name: 1, placeholder: 1, value: 1, disabled: 1, tabindex: 1, hidden: 1 };
 const PAGE = 50;
 const FEED_STEP = 100;
@@ -67,6 +68,7 @@ const S = {
   stoppingPoll: false,
   knownServices: new Set(),
   qTimer: undefined,
+  theme: 'auto',
 };
 
 function bootToken() {
@@ -76,6 +78,157 @@ function bootToken() {
     history.replaceState(null, '', location.pathname);
   }
   return sessionStorage.getItem(TOKEN_KEY);
+}
+function applyTheme(mode) {
+  const normalized = mode === 'light' || mode === 'dark' ? mode : 'auto';
+  S.theme = normalized;
+  const root = document.documentElement;
+  if (root) {
+    if (normalized === 'auto') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', normalized);
+  }
+  try {
+    localStorage.setItem(THEME_KEY, normalized);
+  } catch {}
+  const switcher = $('theme-switcher');
+  if (switcher) {
+    for (const b of switcher.querySelectorAll('[data-theme-mode]')) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-mode') === normalized));
+    }
+  }
+}
+
+function buildThemeSwitcher() {
+  const switcher = $('theme-switcher');
+  if (!switcher) return;
+  clear(switcher);
+  let saved = 'auto';
+  try {
+    saved = localStorage.getItem(THEME_KEY) || 'auto';
+  } catch {}
+  for (const [mode, label] of [
+    ['auto', 'Auto'],
+    ['light', 'Light'],
+    ['dark', 'Dark'],
+  ]) {
+    switcher.append(
+      btn(
+        label,
+        () => applyTheme(mode),
+        { 'data-theme-mode': mode, 'aria-pressed': String(saved === mode), title: `Switch to ${label} theme` },
+      ),
+    );
+  }
+  applyTheme(saved);
+}
+
+async function copyText(text) {
+  const str = String(text);
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(str);
+      return;
+    } catch {}
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = str;
+    ta.className = 'sr';
+    document.body?.append(ta);
+    ta.select?.();
+    document.execCommand?.('copy');
+    ta.remove?.();
+  } catch {}
+}
+
+function copyBtn(label, copyKind, getText, primary = false) {
+  const b = el(
+    'button',
+    {
+      type: 'button',
+      class: `copy-btn${primary ? ' copy-primary' : ''}`,
+      'data-copy': copyKind,
+    },
+    label,
+  );
+  let resetTimer;
+  b.addEventListener('click', (e) => {
+    e?.stopPropagation?.();
+    guarded(async () => {
+      const value = await getText();
+      await copyText(value);
+      b.textContent = '✓ Copied';
+      b.classList.add('is-copied');
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        b.textContent = label;
+        b.classList.remove('is-copied');
+      }, 1500);
+    });
+  });
+  return b;
+}
+
+function formatExchangeUrl(q) {
+  const base = `${q.url.origin}${q.url.basePath}${q.url.path}`;
+  if (!q.query || q.query.length === 0) return base;
+  const qs = q.query
+    .map((f) => {
+      const k = encodeURIComponent(f.name || '');
+      if (!f.masked) return `${k}=${encodeURIComponent(f.value ?? '')}`;
+      if (!f.recorded) return `${k}=%3Cunrecorded%3E`;
+      return `${k}=%3Credacted%3E`;
+    })
+    .join('&');
+  return `${base}?${qs}`;
+}
+
+function formatMaskedFieldLine(f) {
+  if (!f.masked) return `${f.name}: ${f.value ?? ''}`;
+  if (!f.recorded) return `${f.name}: <unrecorded${f.unrecordedReason ? `: ${f.unrecordedReason}` : ''}>`;
+  return `${f.name}: <redacted${f.length !== undefined ? `: ${f.length} bytes` : ''}>`;
+}
+
+async function fetchBodySnapshot(id, role, meta) {
+  if (!meta?.available) return '';
+  const preferredView =
+    meta.kind === 'json' && (meta.length ?? 0) <= (S.meta?.limits?.formatMaxBytes ?? 524288)
+      ? 'formatted'
+      : meta.kind === 'text' || meta.kind === 'json'
+        ? 'text'
+        : 'raw';
+  const p = await api(`/api/exchanges/${encodeURIComponent(id)}/body`, {
+    role,
+    view: preferredView,
+    offset: 0,
+    limit: S.meta?.limits?.pageBytes ?? 16384,
+  });
+  if (p.formatted === 'unavailable') return `[formatted view unavailable: ${p.reason}]`;
+  if (p.view === 'raw') return hexView(fromBase64(p.bytesBase64), p.offset);
+  return p.text || '';
+}
+
+async function formatExchangeRequestCopy(id, x) {
+  const q = x.request;
+  const lines = [`${q.method} ${formatExchangeUrl(q)}`];
+  for (const h of q.headers || []) lines.push(formatMaskedFieldLine(h));
+  for (const c of q.cookies || []) lines.push(`cookie: ${formatMaskedFieldLine(c)}`);
+  if (q.body?.available) {
+    const body = await fetchBodySnapshot(id, 'request-body', q.body);
+    if (body) lines.push('', body);
+  }
+  return lines.join('\n');
+}
+
+async function formatExchangeResponseCopy(id, x) {
+  if (!x.response) return `No HTTP response (${stateLabel(x.item)})`;
+  const lines = [`HTTP ${x.response.status}`];
+  for (const h of x.response.headers || []) lines.push(formatMaskedFieldLine(h));
+  if (x.response.body?.available) {
+    const body = await fetchBodySnapshot(id, 'response-body', x.response.body);
+    if (body) lines.push('', body);
+  }
+  return lines.join('\n');
 }
 
 async function api(path, params) {
@@ -906,26 +1059,39 @@ async function showCall(it, d, current, previous) {
   const c = await api(`/api/calls/${encodeURIComponent(it.id)}`);
   if (!current()) return;
 
+  const callTarget = [c.item.service, c.item.operation].filter(Boolean).join(' · ') || c.tool;
   const header = el(
     'div',
     { class: 'detail-header' },
     el(
       'div',
-      { class: 'detail-header-top' },
+      { class: 'workbench-url-row' },
       el('span', { class: 'kind-pill kind-call' }, 'TOOL ACTION'),
       el('h2', { class: 'mono' }, c.tool),
       stateBadge(c.item),
       badges(c.item),
+      el('div', { class: 'url-breakdown mono' }, callTarget),
+      copyBtn('Copy URL', 'url', () => callTarget, true),
     ),
     el(
       'div',
-      { class: 'detail-meta mono' },
-      el('span', {}, c.item.id),
-      c.item.service ? el('span', {}, `service: ${c.item.service}`) : undefined,
-      c.item.operation ? el('span', {}, `op: ${c.item.operation}`) : undefined,
-      el('span', {}, c.startedAt),
-      c.item.durationMs !== undefined ? el('span', {}, `${c.item.durationMs} ms`) : undefined,
-      el('span', {}, `${c.requestCount} exchanges · ${c.authRunCount} auth runs · ${c.policyBlockCount} policy blocks`),
+      { class: 'workbench-toolbar' },
+      el(
+        'div',
+        { class: 'detail-meta mono' },
+        el('span', {}, c.item.id),
+        c.item.service ? el('span', {}, `service: ${c.item.service}`) : undefined,
+        c.item.operation ? el('span', {}, `op: ${c.item.operation}`) : undefined,
+        el('span', {}, c.startedAt),
+        c.item.durationMs !== undefined ? el('span', {}, `${c.item.durationMs} ms`) : undefined,
+        el('span', {}, `${c.requestCount} exchanges · ${c.authRunCount} auth runs · ${c.policyBlockCount} policy blocks`),
+      ),
+      el(
+        'div',
+        { class: 'copy-actions' },
+        copyBtn('Copy Request', 'request', () => JSON.stringify({ tool: c.tool, args: c.args }, null, 2)),
+        copyBtn('Copy Response', 'response', () => JSON.stringify(c.summary ?? { state: c.item.callState }, null, 2)),
+      ),
     ),
   );
 
@@ -977,35 +1143,77 @@ async function showExchange(id, d, current) {
   if (!current()) return;
   const q = x.request;
 
+  const buildRequestContents = (autoLoadBody) => [
+    fieldTable('Query Parameters', q.query, id, 'request', 'query'),
+    fieldTable('Request Headers', q.headers, id, 'request', 'header'),
+    fieldTable('Cookies', q.cookies, id, 'request', 'cookie'),
+    q.headersTruncated ? el('p', { class: 'badge warn' }, 'headers truncated in the trace') : undefined,
+    q.transportAdded.length ? el('p', { class: 'muted' }, `Added by the HTTP client, not observed: ${q.transportAdded.join(', ')}`) : undefined,
+    bodySection(
+      'Request body',
+      q.body,
+      (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'request-body', view, offset, limit }),
+      false,
+      autoLoadBody,
+    ),
+  ];
+
+  const buildResponseContents = () =>
+    x.response
+      ? [
+          el('p', { class: 'mono' }, `Status: HTTP ${x.response.status}${x.response.decodedEncodings.length ? ` · decoded: ${x.response.decodedEncodings.join(', ')}` : ''}`),
+          fieldTable('Response Headers', x.response.headers, id, 'response', 'header'),
+          bodySection(
+            'Response body',
+            x.response.body,
+            (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'response-body', view, offset, limit }),
+            x.responseMayContainTokens,
+            true,
+          ),
+        ]
+      : [el('p', { class: 'muted' }, `No HTTP response was received (${stateLabel(x.item)}).`)];
+
+  const reqMetaSummary = [q.body?.contentType, q.body?.length !== undefined ? `${q.body.length} B` : undefined].filter(Boolean).join(' · ') || `${(q.headers || []).length} hdrs`;
+  const resMetaSummary = x.response
+    ? [x.response.body?.contentType, x.response.body?.length !== undefined ? `${x.response.body.length} B` : undefined].filter(Boolean).join(' · ') || `${(x.response.headers || []).length} hdrs`
+    : stateLabel(x.item);
+
   const panels = {
-    Request: () => [
-      fieldTable('Query Parameters', q.query, id, 'request', 'query'),
-      fieldTable('Request Headers', q.headers, id, 'request', 'header'),
-      fieldTable('Cookies', q.cookies, id, 'request', 'cookie'),
-      q.headersTruncated ? el('p', { class: 'badge warn' }, 'headers truncated in the trace') : undefined,
-      q.transportAdded.length ? el('p', { class: 'muted' }, `Added by the HTTP client, not observed: ${q.transportAdded.join(', ')}`) : undefined,
-      bodySection(
-        'Request body',
-        q.body,
-        (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'request-body', view, offset, limit }),
-        false,
-        false,
+    'Request + Response': () => [
+      el(
+        'div',
+        { class: 'split-grid' },
+        el(
+          'section',
+          { class: 'split-card card-request', 'aria-label': 'Request card' },
+          el(
+            'div',
+            { class: 'split-card-header' },
+            el('div', { class: 'split-card-title' }, el('span', { class: 'badge accent' }, 'REQUEST'), el('span', { class: 'mono muted' }, reqMetaSummary)),
+            copyBtn('Copy Request', 'request-card', () => formatExchangeRequestCopy(id, x)),
+          ),
+          el('div', { class: 'split-card-body' }, ...buildRequestContents(true).flat(2).filter(Boolean)),
+        ),
+        el(
+          'section',
+          { class: `split-card card-response${!x.response || x.response.status >= 400 ? ' is-error' : ''}`, 'aria-label': 'Response card' },
+          el(
+            'div',
+            { class: 'split-card-header' },
+            el(
+              'div',
+              { class: 'split-card-title' },
+              stateBadge(x.item),
+              el('span', { class: 'mono muted' }, resMetaSummary),
+            ),
+            copyBtn('Copy Response', 'response-card', () => formatExchangeResponseCopy(id, x)),
+          ),
+          el('div', { class: 'split-card-body' }, ...buildResponseContents().flat(2).filter(Boolean)),
+        ),
       ),
     ],
-    Response: () =>
-      x.response
-        ? [
-            el('p', { class: 'mono' }, `Status: HTTP ${x.response.status}${x.response.decodedEncodings.length ? ` · decoded: ${x.response.decodedEncodings.join(', ')}` : ''}`),
-            fieldTable('Response Headers', x.response.headers, id, 'response', 'header'),
-            bodySection(
-              'Response body',
-              x.response.body,
-              (view, offset, limit) => api(`/api/exchanges/${encodeURIComponent(id)}/body`, { role: 'response-body', view, offset, limit }),
-              x.responseMayContainTokens,
-              true,
-            ),
-          ]
-        : [el('p', { class: 'muted' }, `No HTTP response was received (${stateLabel(x.item)}).`)],
+    Request: () => buildRequestContents(false),
+    Response: () => buildResponseContents(),
     Diagnostics: () =>
       ['request', 'response'].flatMap((side) => {
         const dg = x.diagnostics?.[side];
@@ -1055,7 +1263,7 @@ async function showExchange(id, d, current) {
 
   const area = el('div');
   const tabs = el('div', { class: 'tabs', role: 'group', 'aria-label': 'Exchange sections' });
-  const view = { item: x.item, activeName: 'Request', cached: new Map(), responseBodyAvailable: !!x.response?.body?.available };
+  const view = { item: x.item, activeName: 'Request + Response', cached: new Map(), responseBodyAvailable: !!x.response?.body?.available };
   const show = (name) => {
     view.activeName = name;
     for (const b of tabs.children) b.setAttribute('aria-selected', String(b.textContent === name));
@@ -1065,60 +1273,73 @@ async function showExchange(id, d, current) {
   for (const name of Object.keys(panels)) tabs.append(btn(name, () => show(name), { 'aria-selected': 'false' }));
 
   const parentCall = x.item.callId ? S.calls.find((c) => c.id === x.item.callId) : undefined;
+  const queryPreview =
+    q.query && q.query.length > 0
+      ? `?${q.query.map((f) => `${f.name}=${f.masked ? '<redacted>' : (f.value ?? '')}`).join('&')}`
+      : '';
+
   const header = el(
     'div',
     { class: 'detail-header' },
     el(
       'div',
-      { class: 'detail-header-top' },
+      { class: 'workbench-url-row' },
       purposePill(x.item, !x.item.callId),
       methodBadge(q.method),
       stateBadge(x.item),
-      el('h2', { class: 'mono' }, `${q.url.origin}${q.url.basePath}${q.url.path}`),
+      el(
+        'div',
+        { class: 'url-breakdown mono' },
+        el('span', { class: 'url-origin' }, q.url.origin),
+        q.url.basePath ? el('span', { class: 'url-base' }, q.url.basePath) : undefined,
+        el('span', { class: 'url-path' }, q.url.path),
+        queryPreview ? el('span', { class: 'url-query' }, queryPreview) : undefined,
+        el('span', { class: 'muted' }, `  (origin: ${q.url.origin} · basePath: ${q.url.basePath || '(none)'} · path: ${q.url.path})`),
+      ),
       badges(x.item),
+      copyBtn('Copy URL', 'url', () => formatExchangeUrl(q), true),
     ),
     el(
       'div',
-      { class: 'url-breakdown mono' },
-      el('span', { class: 'url-origin' }, q.url.origin),
-      q.url.basePath ? el('span', { class: 'url-base' }, q.url.basePath) : undefined,
-      el('span', { class: 'url-path' }, q.url.path),
-      el('span', { class: 'muted' }, `  (origin: ${q.url.origin} · basePath: ${q.url.basePath || '(none)'} · path: ${q.url.path})`),
+      { class: 'workbench-toolbar' },
+      el(
+        'div',
+        { class: 'detail-meta mono' },
+        el('span', {}, id),
+        el('span', {}, `service: ${x.item.service}`),
+        x.item.operation ? el('span', {}, `op: ${x.item.operation}`) : undefined,
+        el('span', {}, x.startedAt),
+        x.item.durationMs !== undefined ? el('span', {}, `${x.item.durationMs} ms`) : undefined,
+        x.item.parentId ? el('span', {}, `parent: ${x.item.parentId}`) : undefined,
+      ),
+      el(
+        'div',
+        { class: 'copy-actions' },
+        x.item.callId
+          ? btn(`Open parent tool: ${parentCall?.label ?? x.item.callId}`, () => select({ kind: 'call', id: x.item.callId }))
+          : undefined,
+        x.item.parentId ? btn('Go to parent exchange', () => openExchange(x.item.parentId)) : undefined,
+        copyBtn('Copy Request', 'request', () => formatExchangeRequestCopy(id, x)),
+        copyBtn('Copy Response', 'response', () => formatExchangeResponseCopy(id, x)),
+      ),
     ),
-    el(
-      'div',
-      { class: 'detail-meta mono' },
-      el('span', {}, id),
-      el('span', {}, `service: ${x.item.service}`),
-      x.item.operation ? el('span', {}, `op: ${x.item.operation}`) : undefined,
-      el('span', {}, x.startedAt),
-      x.item.durationMs !== undefined ? el('span', {}, `${x.item.durationMs} ms`) : undefined,
-      x.item.parentId ? el('span', {}, `parent: ${x.item.parentId}`) : undefined,
-    ),
-    x.item.parentId || x.item.callId
-      ? el(
-          'div',
-          { class: 'tabs', role: 'group', 'aria-label': 'Navigate' },
-          x.item.callId
-            ? btn(`Open parent tool: ${parentCall?.label ?? x.item.callId}`, () => select({ kind: 'call', id: x.item.callId }))
-            : undefined,
-          x.item.parentId ? btn('Go to parent exchange', () => openExchange(x.item.parentId)) : undefined,
-        )
-      : undefined,
   );
 
   d.append(mobileBackBar(), header, tabs, area);
   view.activate = (previous) => {
     if (previous?.cached) {
       for (const [name, content] of previous.cached) {
-        if (name === 'Request' || name === 'cURL' ||
-            (name === 'Auth run' && previous.item.authRunId === x.item.authRunId) ||
-            (name === 'Response' && previous.responseBodyAvailable && view.responseBodyAvailable)) {
+        if (
+          name === 'Request' ||
+          name === 'cURL' ||
+          (name === 'Auth run' && previous.item.authRunId === x.item.authRunId) ||
+          ((name === 'Response' || name === 'Request + Response') && previous.responseBodyAvailable && view.responseBodyAvailable)
+        ) {
           view.cached.set(name, content);
         }
       }
     }
-    show(previous?.activeName && panels[previous.activeName] ? previous.activeName : 'Request');
+    show(previous?.activeName && panels[previous.activeName] ? previous.activeName : 'Request + Response');
   };
   return view;
 }
@@ -1157,6 +1378,7 @@ async function syncLoop() {
 
 async function start() {
   S.token = bootToken();
+  buildThemeSwitcher();
   $('live-toggle')?.addEventListener('click', () => {
     S.paused = !S.paused;
     setLiveStatus(S.paused ? 'paused' : S.offline ? 'offline' : 'live');

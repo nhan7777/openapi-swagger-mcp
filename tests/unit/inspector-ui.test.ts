@@ -169,3 +169,108 @@ test('live call refresh keeps loaded input but retries input that was not availa
   await ui.flush();
   expect(ui.node('detail').textContent).toContain('recorded on completion');
 });
+
+describe('hybrid workbench UI: theme switcher, split Request+Response view, and 3 copy actions', () => {
+  test('theme switcher toggles Auto, Light, and Dark modes and persists in localStorage', async () => {
+    const ui = await boot();
+    expect(ui.root.getAttribute('data-theme')).toBeNull();
+    const darkBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="dark"]')[0]!;
+    expect(darkBtn).toBeDefined();
+    darkBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBe('dark');
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('dark');
+
+    const lightBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="light"]')[0]!;
+    lightBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBe('light');
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('light');
+
+    const autoBtn = ui.node('theme-switcher').querySelectorAll('[data-theme-mode="auto"]')[0]!;
+    autoBtn.click();
+    expect(ui.root.getAttribute('data-theme')).toBeNull();
+    expect(ui.storage.get('oasm-inspector-theme')).toBe('auto');
+  });
+
+  test('exchange detail defaults to side-by-side Request + Response split view and supports Copy URL, Copy Request, and Copy Response', async () => {
+    const ui = await boot();
+    const exItem = item('exchange', 'req_42', 18);
+    const sel = ui.run<Promise<void>>(`select(${JSON.stringify(exItem)})`);
+    ui.pending.shift()!.resolve({
+      item: exItem,
+      purpose: 'business',
+      startedAt: '2026-10-28T10:00:00Z',
+      request: {
+        method: 'POST',
+        url: { origin: 'http://localhost:9000', basePath: '/api/v1', path: '/orders' },
+        query: [
+          { name: 'dryRun', masked: false, recorded: true, index: 0, value: 'false' },
+          { name: 'api_key', masked: true, recorded: true, index: 1, length: 12 },
+        ],
+        headers: [
+          { name: 'content-type', masked: false, recorded: true, index: 0, value: 'application/json' },
+          { name: 'authorization', masked: true, recorded: false, index: 1, unrecordedReason: 'credential' },
+        ],
+        cookies: [],
+        transportAdded: ['host'],
+        body: { contentType: 'application/json', length: 24, available: true, kind: 'json', complete: true },
+      },
+      response: {
+        status: 201,
+        headers: [{ name: 'content-type', masked: false, recorded: true, index: 0, value: 'application/json' }],
+        decodedEncodings: [],
+        body: { contentType: 'application/json', length: 29, available: true, kind: 'json', complete: true },
+      },
+      responseMayContainTokens: false,
+      hasInput: false,
+    });
+    await sel;
+    // Resolve auto-loaded request and response body previews
+    while (ui.pending.length > 0) {
+      const req = ui.pending.shift()!;
+      if (req.path.includes('role=request-body')) {
+        req.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
+      } else if (req.path.includes('role=response-body')) {
+        req.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
+      }
+      await ui.flush();
+    }
+
+    // Verify side-by-side split cards are both rendered in the default view
+    const detailNode = ui.node('detail');
+    expect(detailNode.querySelectorAll('.split-card')).toHaveLength(2);
+    expect(detailNode.textContent).toContain('"sku": "PRO-1"');
+    expect(detailNode.textContent).toContain('"orderId": "ord_77"');
+
+    // 1. Copy URL button copies full URL with masked query safely
+    const copyUrlBtn = detailNode.querySelectorAll('[data-copy="url"]')[0]!;
+    expect(copyUrlBtn).toBeDefined();
+    copyUrlBtn.click();
+    await ui.flush();
+    expect(ui.copied.at(-1)).toBe('http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
+
+    // 2. Copy Request button copies request line, masked headers, and request body
+    const copyReqBtn = detailNode.querySelectorAll('[data-copy="request"]')[0]!;
+    expect(copyReqBtn).toBeDefined();
+    copyReqBtn.click();
+    for (const p of ui.pending.splice(0)) {
+      p.resolve({ view: 'formatted', offset: 0, totalChars: 24, text: '{\n  "sku": "PRO-1"\n}', note: 'Re-formatted JSON' });
+    }
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('POST http://localhost:9000/api/v1/orders?dryRun=false&api_key=%3Credacted%3E');
+    expect(ui.copied.at(-1)).toContain('content-type: application/json');
+    expect(ui.copied.at(-1)).toContain('authorization: <unrecorded: credential>');
+    expect(ui.copied.at(-1)).toContain('"sku": "PRO-1"');
+
+    // 3. Copy Response button copies status line, headers, and response body
+    const copyResBtn = detailNode.querySelectorAll('[data-copy="response"]')[0]!;
+    expect(copyResBtn).toBeDefined();
+    copyResBtn.click();
+    for (const p of ui.pending.splice(0)) {
+      p.resolve({ view: 'formatted', offset: 0, totalChars: 29, text: '{\n  "orderId": "ord_77"\n}', note: 'Re-formatted JSON' });
+    }
+    await ui.flush();
+    expect(ui.copied.at(-1)).toContain('HTTP 201');
+    expect(ui.copied.at(-1)).toContain('content-type: application/json');
+    expect(ui.copied.at(-1)).toContain('"orderId": "ord_77"');
+  });
+});

@@ -29,6 +29,10 @@ class Element {
     if (key === 'value') this.value = value;
     if (key === 'hidden') this.hidden = true;
   }
+  removeAttribute(key: string): void {
+    this.attributes.delete(key);
+    if (key === 'hidden') this.hidden = false;
+  }
   getAttribute(key: string): string | null { return this.attributes.get(key) ?? null; }
   append(...nodes: Array<Element | string>): void {
     for (const n of nodes) {
@@ -53,7 +57,14 @@ class Element {
     const matches = (node: Element, simple: string): boolean => {
       if (simple.startsWith('.')) return node.className.split(' ').includes(simple.slice(1));
       if (simple.startsWith('#')) return node.getAttribute('id') === simple.slice(1);
-      if (simple.startsWith('[')) return node.getAttribute(simple.slice(1, -1)) !== null;
+      if (simple.startsWith('[')) {
+        const inner = simple.slice(1, -1);
+        const eq = inner.indexOf('=');
+        if (eq < 0) return node.getAttribute(inner) !== null;
+        const k = inner.slice(0, eq).trim();
+        const v = inner.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+        return node.getAttribute(k) === v;
+      }
       return node.tagName.toLowerCase() === simple.toLowerCase();
     };
     const out: Element[] = [];
@@ -65,16 +76,20 @@ class Element {
   }
 }
 
-export function inspectorUi({ deferInput = false } = {}) {
-  const documentRoot = new Element('DOCUMENT');
-  for (const id of ['notice', 'live-pill', 'live-text', 'live-toggle', 'banner', 'filters', 'list', 'timeline-pane', 'timeline-counts', 'more', 'detail', 'layout', 'trace-session']) {
+export function inspectorUi({ deferInput = false, initialTheme }: { deferInput?: boolean; initialTheme?: string } = {}) {
+  const documentRoot = new Element('HTML');
+  for (const id of ['notice', 'live-pill', 'live-text', 'live-toggle', 'theme-switcher', 'banner', 'filters', 'list', 'timeline-pane', 'timeline-counts', 'more', 'detail', 'layout', 'trace-session']) {
     const node = new Element('DIV');
     node.setAttribute('id', id);
     documentRoot.append(node);
   }
+  const storage = new Map<string, string>();
+  if (initialTheme) storage.set('oasm-inspector-theme', initialTheme);
+  const copied: string[] = [];
   const pending: Array<{ path: string; resolve: (body: unknown) => void; reject: (e: Error) => void }> = [];
   const context = vm.createContext({
     document: {
+      documentElement: documentRoot,
       createElement: (tag: string) => new Element(tag.toUpperCase()),
       getElementById: (id: string) => documentRoot.querySelectorAll(`#${id}`)[0],
       querySelectorAll: (selector: string) => documentRoot.querySelectorAll(selector),
@@ -82,7 +97,17 @@ export function inspectorUi({ deferInput = false } = {}) {
     },
     window: { addEventListener: () => {} },
     location: { hash: '', pathname: '/' },
-    sessionStorage: { getItem: () => 'test-token' },
+    sessionStorage: { getItem: () => 'test-token', setItem: () => {} },
+    localStorage: {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => { storage.set(k, String(v)); },
+      removeItem: (k: string) => { storage.delete(k); },
+    },
+    navigator: {
+      clipboard: {
+        writeText: async (text: string) => { copied.push(String(text)); },
+      },
+    },
     URLSearchParams,
     setTimeout: () => 0,
     clearTimeout: () => {},
@@ -101,6 +126,9 @@ export function inspectorUi({ deferInput = false } = {}) {
   return {
     run: <T = unknown>(expression: string): T => vm.runInContext(expression, context) as T,
     pending,
+    copied,
+    storage,
+    root: documentRoot,
     node: (id: string) => documentRoot.querySelectorAll(`#${id}`)[0]!,
     flush: async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); },
   };
