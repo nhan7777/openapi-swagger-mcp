@@ -56,6 +56,7 @@ const S = {
   loadedPages: 1,
   feedGeneration: 0,
   detailGeneration: 0,
+  selectionGeneration: 0,
   detailView: undefined,
   selected: undefined, // 'call:<id>' | 'exchange:<id>'
   selectedStateKey: undefined,
@@ -988,7 +989,9 @@ function mobileBackBar() {
 async function renderDetail(it, refresh = false) {
   const key = `${it.kind}:${it.id}`;
   const generation = ++S.detailGeneration;
+  const selectionGen = S.selectionGeneration;
   const current = () => generation === S.detailGeneration && S.selected === key;
+  const stillSelected = () => selectionGen === S.selectionGeneration && S.selected === key;
   const previous = refresh && S.detailView?.key === key ? S.detailView : undefined;
   const container = el('div');
   // Render into an isolated tree. An older selection/refresh can finish, but cannot publish
@@ -996,7 +999,7 @@ async function renderDetail(it, refresh = false) {
   try {
     const view = it.kind === 'call'
       ? await showCall(it, container, current, previous)
-      : await showExchange(it.id, container, current);
+      : await showExchange(it.id, container, current, stillSelected);
     if (!current()) return;
     view.key = key;
     view.activate?.(previous);
@@ -1010,6 +1013,7 @@ async function renderDetail(it, refresh = false) {
 
 async function select(it) {
   S.selected = `${it.kind}:${it.id}`;
+  ++S.selectionGeneration;
   S.selectedStateKey = undefined;
   $('layout')?.classList.add('detail-open');
   renderList();
@@ -1161,9 +1165,10 @@ async function showCall(it, d, current, previous) {
   return view;
 }
 
-async function showExchange(id, d, current) {
+async function showExchange(id, d, current, stillSelected = current) {
   const x = await api(`/api/exchanges/${encodeURIComponent(id)}`);
   if (!current()) return;
+  const failedPanels = new Set();
   const q = x.request;
   const reqHasBody = hasCopyableBody(q.body);
   const resHasBody = hasCopyableBody(x.response?.body);
@@ -1254,11 +1259,21 @@ async function showExchange(id, d, current) {
           'Auth run': () => {
             const slot = el('div', {}, el('p', { class: 'muted' }, 'Loading auth run...'));
             guarded(async () => {
-              const r = await api(`/api/auth-runs/${encodeURIComponent(x.item.authRunId)}`);
-              if (!current()) return;
-              clear(slot);
-              slot.append(authRunView(r));
-            }, current);
+              try {
+                const r = await api(`/api/auth-runs/${encodeURIComponent(x.item.authRunId)}`);
+                if (!stillSelected()) return;
+                clear(slot);
+                slot.append(authRunView(r));
+              } catch (e) {
+                failedPanels.add('Auth run');
+                view.cached.delete('Auth run');
+                if (stillSelected()) {
+                  S.detailView?.failedPanels?.add('Auth run');
+                  S.detailView?.cached?.delete('Auth run');
+                }
+                throw e;
+              }
+            }, stillSelected);
             return [slot];
           },
         }
@@ -1266,34 +1281,44 @@ async function showExchange(id, d, current) {
     cURL: () => {
       const slot = el('div', {}, el('p', { class: 'muted' }, 'Loading cURL command...'));
       guarded(async () => {
-        const r = await api(`/api/exchanges/${encodeURIComponent(id)}/curl`);
-        if (!current()) return;
-        clear(slot);
-        slot.append(
-          el('div', { class: 'section-header' }, el('h3', {}, 'cURL Command'), copyBtn('Copy cURL', 'curl', () => r.command, true)),
-        );
-        if (r.warnings.length) {
-          slot.append(el('div', { class: 'warnings' }, r.warnings.map((w) => el('div', {}, w))));
-        }
-        slot.append(el('pre', {}, r.command));
-        if (r.placeholders.length) {
+        try {
+          const r = await api(`/api/exchanges/${encodeURIComponent(id)}/curl`);
+          if (!stillSelected()) return;
+          clear(slot);
           slot.append(
-            el('h3', {}, 'Environment variables to set'),
-            el(
-              'ul',
-              {},
-              r.placeholders.map((p) => el('li', { class: 'mono' }, `${p.env} — ${p.for}`)),
-            ),
+            el('div', { class: 'section-header' }, el('h3', {}, 'cURL Command'), copyBtn('Copy cURL', 'curl', () => r.command, true)),
           );
+          if (r.warnings.length) {
+            slot.append(el('div', { class: 'warnings' }, r.warnings.map((w) => el('div', {}, w))));
+          }
+          slot.append(el('pre', {}, r.command));
+          if (r.placeholders.length) {
+            slot.append(
+              el('h3', {}, 'Environment variables to set'),
+              el(
+                'ul',
+                {},
+                r.placeholders.map((p) => el('li', { class: 'mono' }, `${p.env} — ${p.for}`)),
+              ),
+            );
+          }
+        } catch (e) {
+          failedPanels.add('cURL');
+          view.cached.delete('cURL');
+          if (stillSelected()) {
+            S.detailView?.failedPanels?.add('cURL');
+            S.detailView?.cached?.delete('cURL');
+          }
+          throw e;
         }
-      }, current);
+      }, stillSelected);
       return [slot];
     },
   };
 
   const area = el('div');
   const tabs = el('div', { class: 'tabs', role: 'group', 'aria-label': 'Exchange sections' });
-  const view = { item: x.item, activeName: 'Request + Response', cached: new Map(), responseBodyAvailable: !!x.response?.body?.available };
+  const view = { item: x.item, activeName: 'Request + Response', cached: new Map(), failedPanels, responseBodyAvailable: !!x.response?.body?.available };
   const show = (name) => {
     view.activeName = name;
     for (const b of tabs.children) b.setAttribute('aria-selected', String(b.textContent === name));
@@ -1365,6 +1390,7 @@ async function showExchange(id, d, current) {
   view.activate = (previous) => {
     if (previous?.cached) {
       for (const [name, content] of previous.cached) {
+        if (previous.failedPanels?.has(name)) continue;
         if (
           name === 'Request' ||
           name === 'cURL' ||

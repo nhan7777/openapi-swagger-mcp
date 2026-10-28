@@ -436,4 +436,102 @@ describe('hybrid workbench UI: theme switcher, split Request+Response view, and 
     expect(uiThrow.node('notice').textContent).toContain('COPY_FAILED');
     expect(uiThrow.root.querySelectorAll('textarea')).toHaveLength(0);
   });
+
+  test('pending cURL and Auth run tabs survive same-exchange live refresh while stale selection errors stay suppressed', async () => {
+    const ui = await boot();
+    const a1 = { ...item('exchange', 'A', 10), authRunId: 'auth_1' };
+    const a2 = { ...item('exchange', 'A', 25), authRunId: 'auth_1' };
+    const a3 = { ...item('exchange', 'A', 40), authRunId: 'auth_1' };
+
+    const selA = ui.run<Promise<void>>(`select(${JSON.stringify(a1)})`);
+    ui.pending.shift()!.resolve(detail(a1));
+    await selA;
+
+    // 1. Open cURL tab and hold /api/exchanges/A/curl while same-exchange live refresh completes
+    const curlTab = ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'cURL')!;
+    curlTab.click();
+    await ui.flush();
+    const heldCurl = ui.pending.shift()!;
+    expect(heldCurl.path).toBe('/api/exchanges/A/curl');
+
+    ui.run(`S.exchanges = [${JSON.stringify(a2)}]`);
+    const refresh1 = ui.run<Promise<void>>('maybeRefreshSelectedDetail()');
+    ui.pending.shift()!.resolve(detail(a2));
+    await refresh1;
+
+    heldCurl.resolve({ command: "curl 'http://localhost/A'", warnings: [], placeholders: [] });
+    for (const p of ui.pending.splice(0)) {
+      if (p.path === '/api/exchanges/A/curl') p.resolve({ command: "curl 'http://localhost/A'", warnings: [], placeholders: [] });
+    }
+    await ui.flush();
+    expect(ui.node('detail').textContent).toContain("curl 'http://localhost/A'");
+    expect(ui.node('detail').textContent).not.toContain('Loading cURL command...');
+
+    // 2. Open Auth run tab and hold /api/auth-runs/auth_1 while same-exchange live refresh completes
+    const authTab = ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'Auth run')!;
+    authTab.click();
+    await ui.flush();
+    const heldAuth = ui.pending.shift()!;
+    expect(heldAuth.path).toBe('/api/auth-runs/auth_1');
+
+    ui.run(`S.exchanges = [${JSON.stringify(a3)}]`);
+    const refresh2 = ui.run<Promise<void>>('maybeRefreshSelectedDetail()');
+    ui.pending.shift()!.resolve(detail(a3));
+    await refresh2;
+
+    heldAuth.resolve({
+      authRunId: 'auth_1',
+      target: 'service:smoke',
+      action: 'refresh',
+      trigger: 'unauthorized',
+      startedAt: '2026-10-28T10:00:00Z',
+      durationMs: 12,
+      outcome: 'published',
+      captured: ['accessToken'],
+      requestIds: [],
+      joinedRequestIds: [],
+      joinedTruncated: false,
+      partial: false,
+    });
+    for (const p of ui.pending.splice(0)) {
+      if (p.path === '/api/auth-runs/auth_1') {
+        p.resolve({
+          authRunId: 'auth_1',
+          target: 'service:smoke',
+          action: 'refresh',
+          trigger: 'unauthorized',
+          startedAt: '2026-10-28T10:00:00Z',
+          durationMs: 12,
+          outcome: 'published',
+          captured: ['accessToken'],
+          requestIds: [],
+          joinedRequestIds: [],
+          joinedTruncated: false,
+          partial: false,
+        });
+      }
+    }
+    await ui.flush();
+    expect(ui.node('detail').textContent).toContain('captured: accessToken');
+    expect(ui.node('detail').textContent).not.toContain('Loading auth run...');
+
+    // 3. Re-select A, start cURL, switch to B, and verify stale cURL rejection/resolution never alters B or #notice
+    const selAAgain = ui.run<Promise<void>>(`select(${JSON.stringify(a3)})`);
+    ui.pending.shift()!.resolve(detail(a3));
+    await selAAgain;
+    ui.node('detail').querySelectorAll('button').find((b) => b.textContent === 'cURL')!.click();
+    await ui.flush();
+    const staleCurl = ui.pending.shift()!;
+
+    const b = item('exchange', 'B', 5);
+    const selB = ui.run<Promise<void>>(`select(${JSON.stringify(b)})`);
+    ui.pending.shift()!.resolve(detail(b));
+    await selB;
+    ui.node('notice').textContent = 'active notice';
+    staleCurl.reject(new Error('stale curl failed'));
+    await ui.flush();
+    expect(ui.node('notice').textContent).toBe('active notice');
+    expect(ui.node('detail').textContent).toContain('/B');
+    expect(ui.node('detail').textContent).not.toContain('/A');
+  });
 });
