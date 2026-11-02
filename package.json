@@ -1,7 +1,7 @@
 {
   "name": "@nhan7777/openapi-swagger-mcp",
   "version": "0.1.4",
-  "description": "Local MCP server that lets agents discover, integrate and test configured Swagger/OpenAPI APIs in dev/UAT.",
+  "description": "Local MCP server that connects AI agents to Swagger/OpenAPI APIs through 11 fixed tools and a built-in request inspector.",
   "mcpName": "io.github.nhan7777/openapi-swagger-mcp",
   "license": "MIT",
   "repository": {
@@ -22,8 +22,11 @@
   "files": [
     "dist",
     "README.md",
+    "docs/inspector.md",
     "docs/clients.md",
-    "docs/local-execution.md",
+    "docs/configuration.md",
+    "docs/authentication.md",
+    "docs/reference.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "examples",

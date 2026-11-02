@@ -146,7 +146,7 @@ function guidance(o: InitOptions): string {
     '',
   ];
   if (o.bearerEnv)
-    lines.push(`3. Replace the ${o.bearerEnv} placeholder in the client entry with your dev/UAT token. Do not paste the token into the chat.`, '');
+    lines.push(`3. Replace the ${o.bearerEnv} placeholder in the client entry with your API token. Do not paste the token into the chat.`, '');
   lines.push(
     `${o.bearerEnv ? 4 : 3}. Restart or reconnect the client, then ask: "List the configured APIs and report whether the ${o.service} spec loaded. Do not make any business API requests."`,
     '',

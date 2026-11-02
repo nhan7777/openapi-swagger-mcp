@@ -18,7 +18,7 @@
 ##   - Replace every *.example.test host, env var name and file path with your own. They are placeholders.
 ##
 ## Ground rules
-##   - Give each service/environment a unique id, such as orders-dev and orders-uat, and tell the agent which
+##   - Give each service/environment a unique id, such as orders-local and orders-staging, and tell the agent which
 ##     to use. There is no --env switch. For isolation, use separate config files and MCP server entries.
 ##   - Relative paths (spec files, secrets, CA files, roots) resolve against THIS file's directory.
 ##   - Validate without starting the server (static: no network, specs are not downloaded):
@@ -29,7 +29,7 @@
 ##     of your MCP client entry, or the shell that starts the client), not your current terminal.
 ##   - Never commit real secrets. Prefer { fromEnv } or { fromFile }. A literal secret works but is warned about
 ##     on every start (the value itself is never logged).
-##   - Write requests are real. Point these services at dev/UAT systems only.
+##   - Write requests are real. Point these services at non-production systems (local, test, or staging).
 ##
 
 services:

@@ -240,7 +240,7 @@ export function createServer(app: App): McpServer {
     {
       title: 'Invoke operation',
       description:
-        'Send a real HTTP request for one operation to the configured service. Built for integration and negative testing: input is encoded per the spec but NEVER corrected (no defaults added, no coercion, nulls and extra fields kept), so you can send invalid data on purpose. Any HTTP status, including 4xx/5xx, is a normal result; schema diagnostics are advisory and never replace the HTTP outcome. A 401 on managed auth with a refresh recipe may start a background refresh but the request is NEVER replayed. Writes are not blocked: only use dev/UAT targets. `sent:false` means nothing left the process. Large or encoded response fields are replaced in bodyView and listed in omissions; read them from rawBodyArtifact via read_artifact.' +
+        'Send a real HTTP request for one operation to the configured service. Built for integration and negative testing: input is encoded per the spec but NEVER corrected (no defaults added, no coercion, nulls and extra fields kept), so you can send invalid data on purpose. Any HTTP status, including 4xx/5xx, is a normal result; schema diagnostics are advisory and never replace the HTTP outcome. A 401 on managed auth with a refresh recipe may start a background refresh but the request is NEVER replayed. Writes are not blocked: only use non-production targets. `sent:false` means nothing left the process. Large or encoded response fields are replaced in bodyView and listed in omissions; read them from rawBodyArtifact via read_artifact.' +
         UNTRUSTED,
       inputSchema: z
         .object({
