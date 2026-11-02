@@ -50,7 +50,7 @@ Pass environment variables inside your MCP client entry:
   "mcpServers": {
     "api-dev": {
       "command": "npx",
-      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.4", "--config", "/absolute/path/config.dev.yaml"],
+      "args": ["-y", "@nhan7777/openapi-swagger-mcp@0.1.5", "--config", "/absolute/path/config.dev.yaml"],
       "env": {
         "ORDERS_TOKEN": "replace-with-your-api-token"
       }

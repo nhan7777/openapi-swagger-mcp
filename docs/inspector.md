@@ -52,7 +52,7 @@ Ask the assistant connected to the MCP server:
 When `session.inspector.state` is `running`, run the exact command from `urlCommand`—or pass `--inspector-url --session <id>` yourself—in a **local terminal**:
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.4 \
+npx -y @nhan7777/openapi-swagger-mcp@0.1.5 \
   --config /absolute/path/config.dev.yaml \
   --inspector-url --session <session-id>
 ```

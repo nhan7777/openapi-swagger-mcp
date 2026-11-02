@@ -21,7 +21,7 @@ The built-in **Local Request Inspector** opens a read-only browser UI tied to yo
 Want to see the tools and Inspector in action without connecting your own API or credentials? Run `demo` as your MCP server command (Requires **Node.js 22.19+**):
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.4 demo
+npx -y @nhan7777/openapi-swagger-mcp@0.1.5 demo
 ```
 
 `demo` starts a local synthetic backend on `127.0.0.1` (`demo-shop` and `demo-account`), turns the Inspector on, and serves MCP over `stdio`. Put that command in your MCP client, then run the `--inspector-url` command printed on `stderr` in another terminal to watch the agent's calls live in your browser.
@@ -35,7 +35,7 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.4 demo
 Generate a starter `config.dev.yaml` and a ready-to-paste client snippet with `init` (it validates inputs and never edits your client's files):
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.4 init \
+npx -y @nhan7777/openapi-swagger-mcp@0.1.5 init \
   --service orders \
   --base-url http://localhost:8080/api/v1 \
   --spec http://localhost:8080/v3/api-docs \
@@ -61,7 +61,7 @@ services:
 ### 2. Validate the config
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml --check
+npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml --check
 ```
 
 `--check` verifies config syntax, referenced environment variables, and local file paths offline (`"ok": true`, exit `0`). To also verify that remote specs load, run `--check-specs` instead of `--check`.
@@ -77,7 +77,7 @@ Add this `stdio` entry to your MCP client configuration using the **absolute pat
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.4",
+        "@nhan7777/openapi-swagger-mcp@0.1.5",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -101,7 +101,7 @@ Then ask the agent to explore or preview an operation:
 If you enabled `inspector`, open the session's browser UI by running this in **your own local terminal** (using the `sessionId` from `list_apis`):
 
 ```bash
-npx -y @nhan7777/openapi-swagger-mcp@0.1.4 \
+npx -y @nhan7777/openapi-swagger-mcp@0.1.5 \
   --config /absolute/path/config.dev.yaml \
   --inspector-url --session <session-id>
 ```
@@ -160,6 +160,6 @@ A typical agent session follows five steps:
 
 ## Alternative installs & package info
 
-- **Global install:** `npm install -g @nhan7777/openapi-swagger-mcp@0.1.4` (command: `openapi-swagger-mcp`). Always include the `@nhan7777/` scope—the unscoped `openapi-swagger-mcp` package on npm is an unrelated project.
+- **Global install:** `npm install -g @nhan7777/openapi-swagger-mcp@0.1.5` (command: `openapi-swagger-mcp`). Always include the `@nhan7777/` scope—the unscoped `openapi-swagger-mcp` package on npm is an unrelated project.
 - **Registry:** Listed in the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp) (`io.github.nhan7777/openapi-swagger-mcp`). All execution happens locally on your machine; never upload private configs or tokens to third-party marketplaces.
 - **License:** MIT. Third-party dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

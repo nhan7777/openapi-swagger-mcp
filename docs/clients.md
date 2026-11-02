@@ -30,13 +30,13 @@ Do not mix up these two files:
 1. **Node.js 22.19+** must be on the `PATH` seen by your MCP client (`node --version`).
 2. **Validate your API config first** in a terminal:
    ```bash
-   npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml --check
+   npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml --check
    ```
    Wait for exit code `0` and `"ok": true` (see [Troubleshooting](reference.md#5-validation-and-troubleshooting)).
 3. **Always use absolute paths** for `--config`. MCP clients launch stdio servers from unpredictable working directories.
 4. **Never include `--check` in your client config.** `--check` prints a validation report and exits immediately.
 5. **Select `stdio` / `command` transport**—not `HTTP` or `SSE`. The MCP protocol runs strictly over `stdin`/`stdout`.
-6. **Pin the version** (`@nhan7777/openapi-swagger-mcp@0.1.4`) and always keep the `@nhan7777/` scope (the unscoped `openapi-swagger-mcp` package on npm is unrelated).
+6. **Pin the version** (`@nhan7777/openapi-swagger-mcp@0.1.5`) and always keep the `@nhan7777/` scope (the unscoped `openapi-swagger-mcp` package on npm is unrelated).
 
 ### Shared entry
 
@@ -49,7 +49,7 @@ Most clients use this JSON shape under `mcpServers` (exceptions like VS Code and
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.4",
+        "@nhan7777/openapi-swagger-mcp@0.1.5",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -99,13 +99,13 @@ Source: [Connect Claude Code to tools via MCP](https://code.claude.com/docs/en/m
 Add the server from your terminal (everything after `--` is passed directly to `npx`):
 
 ```bash
-claude mcp add --transport stdio api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
+claude mcp add --transport stdio api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml
 ```
 
 - **Scope:** Default is `--scope local` (stored in `~/.claude.json` for the current project) or use `--scope user` (all projects). Avoid `--scope project` (`.mcp.json`), which would commit your machine's absolute path.
 - **With environment variables:** Use `add-json` with the inner entry object:
   ```bash
-  claude mcp add-json api-dev '{"command":"npx","args":["-y","@nhan7777/openapi-swagger-mcp@0.1.4","--config","/absolute/path/config.dev.yaml"],"env":{"ORDERS_TOKEN":"replace-me"}}'
+  claude mcp add-json api-dev '{"command":"npx","args":["-y","@nhan7777/openapi-swagger-mcp@0.1.5","--config","/absolute/path/config.dev.yaml"],"env":{"ORDERS_TOKEN":"replace-me"}}'
   ```
 - **Manage & verify:** Run `claude mcp list` or `claude mcp get api-dev` in a shell, or `/mcp` (including **Reconnect**) inside a Claude Code session.
 
@@ -133,7 +133,7 @@ VS Code supports two different file formats—note the root key difference:
 | User profile `mcp.json` (**MCP: Open User Configuration**) or `.vscode/mcp.json` | `servers` |
 | Portable Copilot `~/.copilot/mcp-config.json` or `.mcp.json` | `mcpServers` |
 
-**Option A — Command Palette:** Run **MCP: Add Server** > **Command (stdio)**, enter `npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml`, name it `api-dev`, and choose your user/global configuration.
+**Option A — Command Palette:** Run **MCP: Add Server** > **Command (stdio)**, enter `npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml`, name it `api-dev`, and choose your user/global configuration.
 
 **Option B — VS Code `mcp.json` (`servers` root key):**
 
@@ -145,7 +145,7 @@ VS Code supports two different file formats—note the root key difference:
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.4",
+        "@nhan7777/openapi-swagger-mcp@0.1.5",
         "--config",
         "/absolute/path/config.dev.yaml"
       ]
@@ -181,7 +181,7 @@ Source: [MCP in Cline](https://docs.cline.bot/mcp/mcp-overview).
       "command": "npx",
       "args": [
         "-y",
-        "@nhan7777/openapi-swagger-mcp@0.1.4",
+        "@nhan7777/openapi-swagger-mcp@0.1.5",
         "--config",
         "/absolute/path/config.dev.yaml"
       ],
@@ -195,7 +195,7 @@ Source: [MCP in Cline](https://docs.cline.bot/mcp/mcp-overview).
 **With the Cline CLI:**
 
 ```bash
-cline mcp add api-dev --yes -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml
+cline mcp add api-dev --yes -- npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml
 cline config mcp
 ```
 
@@ -210,14 +210,14 @@ Codex uses TOML in `~/.codex/config.toml` (shared across Codex CLI, IDE extensio
 ```toml
 [mcp_servers.api-dev]
 command = "npx"
-args = ["-y", "@nhan7777/openapi-swagger-mcp@0.1.4", "--config", "/absolute/path/config.dev.yaml"]
+args = ["-y", "@nhan7777/openapi-swagger-mcp@0.1.5", "--config", "/absolute/path/config.dev.yaml"]
 startup_timeout_sec = 60
 default_tools_approval_mode = "prompt"
 ```
 
 - `startup_timeout_sec = 60` gives the first `npx` download enough time to finish.
 - Keep `default_tools_approval_mode = "prompt"` so calls require confirmation.
-- You can also register via `codex mcp add api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.4 --config /absolute/path/config.dev.yaml`, then add the timeout and approval lines above in `config.toml`.
+- You can also register via `codex mcp add api-dev -- npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml`, then add the timeout and approval lines above in `config.toml`.
 - Check status with `codex mcp list` or `/mcp` inside Codex.
 
 ---
@@ -235,7 +235,7 @@ Source: [Oh My Pi](https://github.com/can1357/oh-my-pi) bundled `mcp-config.md`.
          "command": "npx",
          "args": [
            "-y",
-           "@nhan7777/openapi-swagger-mcp@0.1.4",
+           "@nhan7777/openapi-swagger-mcp@0.1.5",
            "--config",
            "/absolute/path/config.dev.yaml"
          ]
@@ -260,7 +260,7 @@ Source: [MCP configuration in Kiro](https://kiro.dev/docs/mcp/configuration/).
          "command": "npx",
          "args": [
            "-y",
-           "@nhan7777/openapi-swagger-mcp@0.1.4",
+           "@nhan7777/openapi-swagger-mcp@0.1.5",
            "--config",
            "/absolute/path/config.dev.yaml"
          ],
