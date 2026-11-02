@@ -1,3 +1,4 @@
+import { ToolError } from '../types.js';
 import { METHODS, resolveRef, type Dialect } from './model.js';
 
 // Context-aware traversal of an OpenAPI / Swagger document. Only structural positions and schema-valued keywords are
@@ -68,7 +69,7 @@ function rootEntries(doc: Obj, dialect: Dialect, deep: boolean): Entry[] {
  * Walk from `start`. `doc` is only needed to follow `$ref`; without `followRefs` a `$ref` node is reported to the
  * handlers and its target is left to the caller (the target may live in another document).
  */
-function run(start: Entry[], doc: Obj | undefined, dialect: Dialect, handlers: Handlers, followRefs: boolean, deep: boolean, seen: SeenNodes): void {
+function run(start: Entry[], doc: Obj | undefined, dialect: Dialect, handlers: Handlers, followRefs: boolean, deep: boolean, seen: SeenNodes, lenient = false): void {
   const swagger2 = dialect === 'swagger2';
   const methods = swagger2 ? METHODS.filter((m) => m !== 'trace') : METHODS;
   const stack: Entry[] = [...start];
@@ -92,7 +93,14 @@ function run(start: Entry[], doc: Obj | undefined, dialect: Dialect, handlers: H
     if (typeof node.$ref === 'string') {
       if (followRefs && doc !== undefined) {
         const hops: Obj[] = [];
-        const target = resolveRef(doc, node, '', (n) => hops.push(n)).value;
+        let target: unknown;
+        try {
+          target = resolveRef(doc, node, '', (n) => hops.push(n)).value;
+        } catch (e) {
+          // Only a reference that cannot be followed is tolerated; any other failure is a real error.
+          const unresolved = e instanceof ToolError && (e.code === 'SPEC_REF_UNRESOLVED' || e.code === 'SPEC_REF_CYCLE');
+          if (!(lenient && unresolved)) throw e;
+        }
         for (const hop of hops) if (hop !== node) push(kind, hop);
         push(kind, target);
       }
@@ -154,8 +162,10 @@ function run(start: Entry[], doc: Obj | undefined, dialect: Dialect, handlers: H
 /**
  * Call `visit` for every Schema Object reachable from a schema-bearing position, following `$ref` (every hop). The same
  * object is visited once. The visitor may edit the node it is given; traversal reads keywords after the visit.
+ * A `$ref` that cannot be resolved (a remote reference the bundler left behind, or a dangling pointer) throws, unless
+ * `lenient`: then its target is skipped and left to whichever check owns that error.
  */
-export function visitSchemaObjects(doc: unknown, dialect: Dialect, visit: (schema: Obj) => void): void {
+export function visitSchemaObjects(doc: unknown, dialect: Dialect, visit: (schema: Obj) => void, lenient = false): void {
   if (!isObj(doc)) return;
-  run(rootEntries(doc, dialect, true), doc, dialect, { schema: visit }, true, true, newSeenNodes());
+  run(rootEntries(doc, dialect, true), doc, dialect, { schema: visit }, true, true, newSeenNodes(), lenient);
 }

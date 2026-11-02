@@ -251,7 +251,7 @@ export class SpecLoader {
     const operations = new Map<string, Operation>();
     try {
       semantic = validateSemantics(bundled, dialect);
-      await validateStructure(bundled, semantic.skipped);
+      await validateStructure(bundled, dialect, semantic.skipped);
       const skippedKeys = new Set(semantic.skipped.map((s) => s.key));
       // Building also resolves every parameter/response reference used for execution, so it must run once, here.
       for (const op of buildOperations(bundled, dialect, svc.id)) if (!skippedKeys.has(op.key)) operations.set(op.key, op);

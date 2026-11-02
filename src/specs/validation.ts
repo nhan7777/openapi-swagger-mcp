@@ -60,12 +60,13 @@ function materializePathItems(doc: unknown): void {
  * Structural validation of a bundled document (Swagger 2.0 / OAS 3.0 / 3.1 JSON Schema + swagger-parser spec checks).
  * swagger-parser does NOT do semantic validation for OAS3; `validateSemantics` adds the checks execution relies on.
  */
-export async function validateStructure(bundled: unknown, skipped: readonly SkippedOperation[] = []): Promise<void> {
+export async function validateStructure(bundled: unknown, dialect: Dialect, skipped: readonly SkippedOperation[] = []): Promise<void> {
   const copy = structuredClone(bundled) as object;
   materializePathItems(copy);
   uniquifyOperationIds(copy);
   dropSkippedOperations(copy, skipped);
   stripHttpSchemeExtras(copy);
+  stripSchemaExamples(copy, dialect);
   try {
     await SwaggerParser.validate(copy as never, {
       resolve: { external: false, file: false, http: false },
@@ -97,7 +98,7 @@ export interface SpecWarningSummary {
   excludedOperations: number;
 }
 export interface SemanticResult {
-  /** At most MAX_WARNING_ENTRIES entries and MAX_WARNING_BYTES serialized bytes; exclusions first, then HTTP scheme, then duplicates. */
+  /** At most MAX_WARNING_ENTRIES entries and MAX_WARNING_BYTES serialized bytes; exclusions first, then HTTP scheme, then schema examples, then duplicates. */
   warnings: string[];
   warningSummary: SpecWarningSummary;
   skipped: SkippedOperation[];
@@ -159,6 +160,27 @@ function stripHttpSchemeExtras(doc: unknown): void {
   for (const e of httpSchemeExtras(doc)) for (const f of e.fields) delete doc.components.securitySchemes[e.scheme][f];
 }
 
+/** Schema Objects that carry `examples`; OAS 3.0 forbids the key there in any value shape. Other dialects: none. */
+function schemaExampleHolders(doc: unknown, dialect: Dialect): Array<Record<string, unknown>> {
+  if (dialect !== 'oas30' || !isPlainObject(doc)) return [];
+  const out: Array<Record<string, unknown>> = [];
+  // Lenient: an unresolved `$ref` is reported by the checks that own it (or tolerated by the parser), not by this scan.
+  visitSchemaObjects(
+    doc,
+    dialect,
+    (s) => {
+      if (Object.hasOwn(s, 'examples')) out.push(s);
+    },
+    true,
+  );
+  return out;
+}
+
+/** Validation copy only: the stored document keeps the author's examples. */
+function stripSchemaExamples(doc: unknown, dialect: Dialect): void {
+  for (const s of schemaExampleHolders(doc, dialect)) delete s.examples;
+}
+
 /** Validation copy only: remove operations that `validateSemantics` already excluded with a warning. */
 function dropSkippedOperations(doc: unknown, skipped: readonly SkippedOperation[]): void {
   if (!isPlainObject(doc) || !isPlainObject(doc.paths)) return;
@@ -201,6 +223,7 @@ export function assertNoRefExecutionSiblings(doc: unknown, label: string): void 
  * Non-blocking findings come back as bounded warnings (at most 20 entries and 4096 bytes, exact counts in `warningSummary`):
  * - a duplicate `operationId` (operations are addressed by `METHOD /path`, unique by construction);
  * - `in`/`name` on a `type: http` security scheme (ignored);
+ * - `examples` inside an OpenAPI 3.0 Schema Object (ignored for validation, stored unchanged);
  * - an operation declaring a path parameter that is not in its path template: that one operation is excluded
  *   (listed in `skipped`) and the rest of the service stays usable.
  */
@@ -211,6 +234,7 @@ export function validateSemantics(doc: any, dialect: Dialect): SemanticResult {
   };
   const excluded = newBucket();
   const schemeExtras = newBucket();
+  const schemaExamples = newBucket();
   const duplicates = newBucket();
   const skipped: SkippedOperation[] = [];
 
@@ -232,6 +256,9 @@ export function validateSemantics(doc: any, dialect: Dialect): SemanticResult {
   };
   checkSecurity(doc.security, 'document');
   for (const e of httpSchemeExtras(doc)) note(schemeExtras, `securityScheme "${e.scheme}": ignored ${e.fields.join('/')} (only valid for type apiKey)`);
+  const holders = schemaExampleHolders(doc, dialect).length;
+  if (holders)
+    note(schemaExamples, `${holders} schema object(s) use "examples", which OpenAPI 3.0 does not allow in a schema; ignored for validation and kept in the stored document (use "example", or "examples" on the media type)`);
 
   const operationIds = new Map<string, string>();
   const paths = isPlainObject(doc.paths) ? doc.paths : {};
@@ -318,5 +345,5 @@ export function validateSemantics(doc: any, dialect: Dialect): SemanticResult {
     }
   }
   if (problems.length) throw new ToolError('SPEC_INVALID', boundedDiagnostic(`specification failed semantic checks: ${problems.join('; ')}`, MAX_HARD_ERROR_BYTES));
-  return { ...packWarnings([excluded, schemeExtras, duplicates], skipped.length), skipped };
+  return { ...packWarnings([excluded, schemeExtras, schemaExamples, duplicates], skipped.length), skipped };
 }

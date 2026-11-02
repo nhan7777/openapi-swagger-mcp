@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { validateSemantics } from '../../src/specs/validation.js';
 import { Backend } from '../helpers/backend.js';
 import { startHarness, type Harness } from '../helpers/harness.js';
 import { buildSpec } from '../helpers/specs.js';
@@ -161,6 +162,102 @@ describe('spec loading', () => {
       // a declared template parameter that is missing stays a hard error for the whole service
       h.write('specs/part.json', JSON.stringify(withExtra({ '/things/{thingId}': { get: { responses: { '200': { description: 'ok' } } } } })));
       expect((await h.app.registry.refreshService('part')).error?.code).toBe('SPEC_INVALID');
+    } finally {
+      await h?.close();
+      h = undefined;
+      await be.close();
+    }
+  });
+
+  test('OAS 3.0: schema "examples" in any value shape are counted, and an unresolvable $ref does not hide the schemas after it', () => {
+    const doc = {
+      openapi: '3.0.0',
+      info: { title: 't', version: '1' },
+      paths: {},
+      components: {
+        schemas: {
+          // run() pops from the end, so the failing refs (last) are walked first and everything above must still be reached.
+          Plain: { type: 'string', example: 'x' },
+          AsMap: { type: 'string', examples: { a: { value: 'x' } } },
+          AsArray: { type: 'string', examples: ['x'] },
+          AsScalar: { type: 'string', examples: 42 },
+          AsNull: { type: 'string', examples: null },
+          Missing: { $ref: '#/components/schemas/Nope' },
+          Dangling: { $ref: 'http://127.0.0.1:9/other.json#/Thing' },
+        },
+      },
+    };
+    const result = validateSemantics(doc, 'oas30');
+    expect(result.warnings).toEqual([expect.stringContaining('4 schema object(s) use "examples"')]);
+    expect(result.warningSummary.total).toBe(1);
+  });
+
+  test('OAS 3.0: "examples" inside a Schema Object is ignored for validation with one warning; constraints still apply', async () => {
+    const be = await Backend.start();
+    try {
+      h = await startHarness({
+        backend: be,
+        services: {
+          ex: { baseUrl: be.origin, spec: { source: { file: 'specs/ex.json' } } },
+          swex: { baseUrl: be.origin, spec: { source: { file: 'specs/sw-ex.json' } } },
+        },
+      });
+      const build = (shareType = 'string') => {
+        const spec = withExtra({
+          '/share': {
+            post: {
+              operationId: 'share',
+              requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ShareDto' } } } },
+              responses: { '200': { description: 'ok' } },
+            },
+          },
+          '/check': {
+            post: {
+              operationId: 'check',
+              requestBody: {
+                required: true,
+                content: { 'application/json': { schema: { type: 'object', properties: { url: { type: 'string', examples: { a: { value: 'https://example.test/c' } } } } } } },
+              },
+              responses: { '200': { description: 'ok' } },
+            },
+          },
+        }) as unknown as { components: { schemas: Record<string, unknown> } };
+        spec.components.schemas.ShareDto = {
+          type: 'object',
+          required: ['shareURL'],
+          properties: { shareURL: { type: shareType, minLength: 3, examples: { facebook: { value: 'https://example.test/a' } } } },
+        };
+        return spec;
+      };
+      h.write('specs/ex.json', JSON.stringify(build()));
+      const r = await h.app.registry.refreshService('ex');
+      expect(r.error).toBeUndefined();
+      const state = h.app.registry.states().find((s) => s.serviceId === 'ex')!;
+      expect(state.state).toBe('ready');
+      expect(state.warnings).toEqual([expect.stringContaining('2 schema object(s) use "examples"')]);
+      expect(state.warningSummary).toEqual({ total: 1, shown: 1, omitted: 0, excludedOperations: 0 });
+      // the stored document keeps the author's examples
+      expect(h.app.registry.peek('ex')!.bundled).toMatchObject({
+        components: { schemas: { ShareDto: { properties: { shareURL: { examples: { facebook: { value: 'https://example.test/a' } } } } } } },
+      });
+      // constraints still apply
+      be.json('POST /share', 200, {});
+      const invoke = (value: unknown) =>
+        h!.app.invoker.invoke({ service: 'ex', operation: 'POST /share', revision: state.revision!, input: { body: { json: { value: value as never } } }, auth: { mode: 'anonymous' } });
+      const ok = await invoke({ shareURL: 'https://x' });
+      expect(ok.http?.status).toBe(200);
+      expect(ok.diagnostics.request.state).toBe('valid');
+      const missing = await invoke({});
+      expect(missing.diagnostics.request.state).toBe('invalid');
+      expect(missing.diagnostics.request.issues.some((i) => i.keyword === 'required')).toBe(true);
+      // other structural errors still hard-fail
+      h.write('specs/ex.json', JSON.stringify(build('not-a-type')));
+      expect((await h.app.registry.refreshService('ex')).error?.code).toBe('SPEC_INVALID');
+      // Swagger 2.0 is unchanged
+      const sw = buildSpec('swagger2') as unknown as { definitions: Record<string, unknown> };
+      sw.definitions.Extra = { type: 'string', examples: { a: { value: 'x' } } };
+      h.write('specs/sw-ex.json', JSON.stringify(sw));
+      expect((await h.app.registry.refreshService('swex')).error?.code).toBe('SPEC_INVALID');
     } finally {
       await h?.close();
       h = undefined;

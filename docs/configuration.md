@@ -96,6 +96,7 @@ Common framework quirks (such as in NestJS-generated specs) produce `warnings` i
 |---|---|
 | Duplicate `operationId` across endpoints | Warning only—operations are addressed by `METHOD /path` |
 | Extra `in` / `name` fields on `type: http` security schemes | Warning only—ignored during validation |
+| `examples` inside a Schema Object of an OpenAPI 3.0 spec (OpenAPI 3.0 only allows `example` there) | Warning only (one entry with the count)—ignored during validation and kept unchanged in the stored document. Swagger 2.0 still rejects it; OpenAPI 3.1 allows it |
 | Path parameter declared without a matching `{param}` in the URL path | **Only that operation is excluded** (`PATH_PARAMETER_NOT_IN_TEMPLATE`); the rest of the service stays available |
 
 Structural errors still reject the service snapshot (`SPEC_INVALID`), including:
