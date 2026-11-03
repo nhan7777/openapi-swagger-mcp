@@ -1,38 +1,63 @@
-# openapi-swagger-mcp
+# 🔌 openapi-swagger-mcp
 
-**`openapi-swagger-mcp`** is a local MCP server that connects your AI coding agent or assistant to the **Swagger 2.0 and OpenAPI 3.0/3.1 APIs** you configure.
+[![npm version](https://img.shields.io/npm/v/@nhan7777/openapi-swagger-mcp?color=0969da&label=npm)](https://www.npmjs.com/package/@nhan7777/openapi-swagger-mcp)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.19.0-339933)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Instead of generating one tool per endpoint—which floods context windows on large APIs—it exposes **11 fixed tools** regardless of spec size. Your agent can search operations, read parameter and response contracts, preview requests offline, authenticate, and send real HTTP calls directly from your machine.
+Connect your AI coding agent to any **Swagger 2.0** or **OpenAPI 3.0 / 3.1** service from your local machine.
 
-### Review how your agent runs with the built-in Inspector
+Most OpenAPI-to-MCP bridges generate one tool per endpoint. That works on a 10-route pet store and falls apart on a 400-route backend. `openapi-swagger-mcp` takes a different approach: it gives the agent **11 fixed tools** to search specs, read schemas, dry-run requests, handle auth, and make real HTTP calls, no matter how many endpoints your API has.
 
-When an AI agent searches endpoints, authenticates, and executes multi-step API calls, relying on chat summaries alone makes it hard to verify what actually happened over the wire.
+```mermaid
+flowchart LR
+  subgraph Machine["💻 Your Machine"]
+    Client["🤖 MCP Client\n(Claude, Cursor, VS Code, ...)"]
+    Server["⚙️ openapi-swagger-mcp\n(11 fixed tools)"]
+    Inspector["🔎 Local Inspector UI\n(http://127.0.0.1)"]
+  end
 
-The built-in **Local Request Inspector** opens a read-only browser UI tied to your active MCP session so you can audit the agent's execution in real time:
+  subgraph Targets["🌐 Your Non-Production APIs"]
+    Specs["📄 OpenAPI / Swagger Specs"]
+    Backend["🚀 API Services"]
+  end
 
-- **Correlated activity timeline** — See every MCP tool call alongside the exact HTTP requests, redirect hops, and login/refresh runs it triggered, and immediately distinguish offline `preview_operation` checks from real `invoke_operation` requests.
-- **Side-by-side HTTP workbench** — Inspect actual URLs, query parameters, headers, cookies, request payloads, and raw or formatted responses—while keeping configured credentials masked by name.
-- **Contract diagnostics & cURL replay** — Check whether requests and responses matched your OpenAPI schema, spot truncated or blocked calls, and copy a ready-to-review `curl` command to reproduce any request yourself.
+  Client <-->|"stdio (MCP)"| Server
+  Server -->|"loads & indexes"| Specs
+  Server <-->|"HTTP / HTTPS"| Backend
+  Server -.->|"read-only trace"| Inspector
+```
 
 ---
 
-## Try the demo in 30 seconds
+## 🔎 See what your agent actually sent
 
-Want to see the tools and Inspector in action without connecting your own API or credentials? Run `demo` as your MCP server command (Requires **Node.js 22.19+**):
+Chat summaries only tell you what the model *thinks* happened. When an agent chains five API calls, refreshes a token, and hits a `422`, you want to see the real traffic.
+
+The built-in **Local Request Inspector** opens a read-only web UI on `127.0.0.1` for your active MCP session:
+
+- **🕒 Live activity timeline:** Every MCP tool call is paired with the HTTP requests, redirects, and login/refresh runs it triggered. Offline `preview_operation` checks show up clearly with zero network traffic.
+- **🧪 Side-by-side HTTP workbench:** Check full URLs, query parameters, headers, cookies, request bodies, and formatted or hex responses. Secrets injected from your config stay masked by name.
+- **📋 Schema checks & cURL export:** Spot request or response fields that broke your OpenAPI contract, and copy a ready-to-run `curl` command for any exchange.
+
+---
+
+## ⚡ Try the built-in demo in 30 seconds
+
+Want to click around the Inspector and test the tools before wiring up your own API? Run `demo` as your MCP server command (requires **Node.js 22.19+**):
 
 ```bash
 npx -y @nhan7777/openapi-swagger-mcp@0.1.5 demo
 ```
 
-`demo` starts a local synthetic backend on `127.0.0.1` (`demo-shop` and `demo-account`), turns the Inspector on, and serves MCP over `stdio`. Put that command in your MCP client, then run the `--inspector-url` command printed on `stderr` in another terminal to watch the agent's calls live in your browser.
+`demo` spins up a local mock backend on `127.0.0.1` (`demo-shop` and `demo-account`), turns on the Inspector, and serves MCP over `stdio`. Drop that command into your MCP client, then run the `--inspector-url` command printed on `stderr` in a local terminal to watch the agent work in your browser.
 
 ---
 
-## Quick start
+## 🚀 Quick start
 
 ### 1. Create an API config
 
-Generate a starter `config.dev.yaml` and a ready-to-paste client snippet with `init` (it validates inputs and never edits your client's files):
+Run `init` to generate a starter `config.dev.yaml` and a client snippet. It validates your inputs and never touches your editor's config files:
 
 ```bash
 npx -y @nhan7777/openapi-swagger-mcp@0.1.5 init \
@@ -43,9 +68,9 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.5 init \
   --client claude-code
 ```
 
-*(Add `--bearer-env ORDERS_TOKEN` if your API uses a Bearer token; `--client` accepts `generic`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `codex`, `omp`, or `kiro`.)*
+> 💡 **Tip:** Add `--bearer-env ORDERS_TOKEN` if your API expects a Bearer token. `--client` accepts `generic`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `codex`, `omp`, or `kiro`.
 
-Or create `config.dev.yaml` by hand—enable `inspector` so you can review agent runs in your browser:
+Prefer writing YAML by hand? Create `config.dev.yaml`:
 
 ```yaml
 inspector:
@@ -55,20 +80,20 @@ inspector:
 services:
   orders:
     baseUrl: http://localhost:8080/api/v1    # full URL prefix; overrides spec servers/basePath
-    spec: http://localhost:8080/v3/api-docs  # URL or relative file path such as ./openapi.json
+    spec: http://localhost:8080/v3/api-docs  # URL or relative file path like ./openapi.json
 ```
 
-### 2. Validate the config
+### 2. Check the config
 
 ```bash
 npx -y @nhan7777/openapi-swagger-mcp@0.1.5 --config /absolute/path/config.dev.yaml --check
 ```
 
-`--check` verifies config syntax, referenced environment variables, and local file paths offline (`"ok": true`, exit `0`). To also verify that remote specs load, run `--check-specs` instead of `--check`.
+`--check` validates syntax, environment variables, and local file paths offline (`"ok": true`, exit `0`). To also fetch and validate your OpenAPI specs over the network, use `--check-specs`.
 
-### 3. Add the server to your MCP client
+### 3. Register the server in your MCP client
 
-Add this `stdio` entry to your MCP client configuration using the **absolute path** to your YAML/JSON file (do **not** include `--check` here):
+Add this `stdio` entry to your MCP client config using the **absolute path** to `config.dev.yaml` (leave `--check` out of `args`):
 
 ```json
 {
@@ -86,19 +111,19 @@ Add this `stdio` entry to your MCP client configuration using the **absolute pat
 }
 ```
 
-Exact file paths, root keys (`mcpServers`, `servers`, or `mcp_servers`), and CLI setup commands for **Claude Desktop, Claude Code, Cursor, VS Code / GitHub Copilot, Windsurf, Cline, Codex CLI, OMP, and Kiro** are in the [MCP Client Setup Guide](docs/clients.md).
+Need the exact config file path or CLI command for **Claude Desktop, Claude Code, Cursor, VS Code / GitHub Copilot, Windsurf, Cline, Codex CLI, OMP, or Kiro**? See the [🛠️ MCP Client Setup Guide](docs/clients.md).
 
-### 4. Ask your first prompt & open the Inspector
+### 4. Send a first prompt & open the Inspector
 
-Reconnect the MCP server in your client and start with a read-only check:
+Reconnect the MCP server in your client and start with a safe, read-only prompt:
 
-> List the configured APIs, report whether the `orders` spec loaded, and show `session.sessionId` and `session.inspector.state` without making any API requests.
+> List the configured APIs, check whether the `orders` spec loaded, and show `session.sessionId` and `session.inspector.state` without calling any API endpoints.
 
-Then ask the agent to explore or preview an operation:
+Next, ask the agent to look up an endpoint and dry-run a request:
 
-> Find the order details endpoint in `orders`, explain its required inputs, and preview a request for ID `demo-123` without sending it.
+> Find the order details endpoint in `orders`, show its required parameters, and preview a request for ID `demo-123` without sending it.
 
-If you enabled `inspector`, open the session's browser UI by running this in **your own local terminal** (using the `sessionId` from `list_apis`):
+If `inspector.enabled` is `true`, open the browser UI from **your own terminal** using the `sessionId` from `list_apis`:
 
 ```bash
 npx -y @nhan7777/openapi-swagger-mcp@0.1.5 \
@@ -106,60 +131,79 @@ npx -y @nhan7777/openapi-swagger-mcp@0.1.5 \
   --inspector-url --session <session-id>
 ```
 
-> Keep the printed URL private: its `#t=...` fragment carries the local session token, so open it directly in your browser rather than running `--inspector-url` through the AI chat. See the [Inspector Guide](docs/inspector.md).
+> 🔒 **Keep the Inspector URL private:** The `#t=...` fragment at the end of the URL is your local access token. Run `--inspector-url` in your own terminal and open it directly in a browser, not inside the AI chat. See the [🔎 Inspector Guide](docs/inspector.md).
 
 ---
 
-## Core workflow & safety
+## 🧭 How a typical session flows
 
-A typical agent session follows five steps:
+```mermaid
+sequenceDiagram
+  autonumber
+  actor You
+  participant Agent as 🤖 AI Agent
+  participant MCP as ⚙️ openapi-swagger-mcp
+  participant API as 🚀 Target API
 
-1. **Discover** — `list_apis` and `search_operations` find the right endpoint and spec `revision`.
-2. **Read contract** — `get_operation_schema` inspects parameters, request payloads, auth, and expected responses.
-3. **Preview** — `preview_operation` builds and validates the outgoing request locally (`sent: false`) without touching the network.
-4. **Call** — `invoke_operation` sends the exact payload (preserving invalid inputs for negative testing) and returns the HTTP response plus advisory schema diagnostics.
-5. **Audit** — Open the [Inspector](docs/inspector.md) to verify every tool call, HTTP exchange, auth recovery, and payload.
+  You->>Agent: "Check order demo-123 in orders"
+  Agent->>MCP: list_apis / search_operations
+  MCP-->>Agent: matching endpoints + spec revision
+  Agent->>MCP: get_operation_schema (GET /orders/{id})
+  MCP-->>Agent: parameters, auth, response schema
+  Agent->>MCP: preview_operation (offline dry-run)
+  MCP-->>Agent: built URL, headers, validation (sent: false)
+  Agent->>MCP: invoke_operation
+  MCP->>API: GET /api/v1/orders/demo-123
+  API-->>MCP: 200 OK + JSON body
+  MCP-->>Agent: status, bodyView, schema diagnostics
+```
 
-> **Important safety notes**
-> - **Use against non-production environments** (such as local, test, or staging). `invoke_operation` sends real `POST`, `PUT`, `PATCH`, and `DELETE` requests with no rollback or server-side write lock. Keep your MCP client's tool approval prompts turned on.
-> - **Know your data boundary.** This server runs locally over `stdio` with zero telemetry and no cloud backend, but tool outputs read by your assistant can be sent by your MCP client to your AI model provider. Load secrets via `fromEnv` or `fromFile` rather than pasting tokens into chat.
+1. **🔍 Discover:** `list_apis` and `search_operations` locate the right endpoint and current spec `revision`.
+2. **📐 Read the contract:** `get_operation_schema` returns parameters, request body shape, auth requirements, and response schemas.
+3. **🧪 Dry-run:** `preview_operation` builds and validates the request locally (`sent: false`) without touching the network.
+4. **🚀 Call:** `invoke_operation` sends the real HTTP request (keeping intentional bad inputs intact for negative testing) and checks the response against the spec.
+5. **🔎 Audit:** Open the [Inspector](docs/inspector.md) to review every tool call, HTTP exchange, auth run, and payload.
+
+> ⚠️ **Two rules to keep in mind**
+> - **Point at non-production environments** (local, test, or staging). `invoke_operation` sends real `POST`, `PUT`, `PATCH`, and `DELETE` requests with no undo button. Keep your MCP client's tool confirmation prompts enabled.
+> - **Know what reaches your LLM provider.** This server runs locally over `stdio` with zero telemetry. However, any tool output your assistant reads is sent by your MCP client to your model provider. Load credentials with `fromEnv` or `fromFile` instead of pasting tokens into chat.
 
 ---
 
-## The 11 fixed tools
+## 🧰 The 11 fixed tools
 
-| Category | Tool | Purpose |
+| Group | Tool | What it does |
 |---|---|---|
-| **Discovery** | `list_apis` | List configured services, spec readiness/revisions, warnings, and Inspector session info |
-| | `search_operations` | Find endpoints by path, operationId, text, parameters, or request/response fields |
-| | `get_operation_schema` | Read an operation's full contract (parameters, request body, responses, security) |
-| | `refresh_specs` | Reload specs without restarting the server (keeps the last valid snapshot on failure) |
-| **Execution** | `preview_operation` | Build and check a request offline (`sent: false`) without sending network traffic |
+| **🔍 Discovery** | `list_apis` | List configured services, spec readiness, revisions, warnings, and Inspector status |
+| | `search_operations` | Search endpoints by path, operationId, text, parameters, or request/response fields |
+| | `get_operation_schema` | Read the full contract for one operation (parameters, body, responses, auth) |
+| | `refresh_specs` | Reload OpenAPI specs without restarting the server (keeps the last valid snapshot if reload fails) |
+| **🚀 Execution** | `preview_operation` | Build and validate a request offline (`sent: false`) with zero network traffic |
 | | `invoke_operation` | Send a real HTTP request, return status/body/diagnostics, and optionally capture session auth |
-| **Auth** | `authenticate` | Run a configured login/refresh recipe or reload static credential sources |
-| | `get_auth_status` | Check credential readiness, active profile, cookies, and errors without exposing secret values |
-| | `manage_session` | Create, inspect, or delete in-memory interactive sessions (for OTP, SSO, or imported tokens) |
-| **Artifacts** | `read_artifact` | Page through or query (via JSON Pointer) large responses and contracts stored locally |
-| | `export_artifact` | Save raw bytes, text, or decoded base64 fields to an allowed local directory |
+| **🔐 Auth** | `authenticate` | Run a configured login/refresh recipe or reload static credentials |
+| | `get_auth_status` | Check credential state, active profile, cookies, and errors without exposing secret values |
+| | `manage_session` | Create, inspect, or delete in-memory sessions for OTP, SSO, or imported tokens |
+| **📦 Artifacts** | `read_artifact` | Page through or query (via JSON Pointer) large responses and schemas stored on disk |
+| | `export_artifact` | Save raw bytes, UTF-8 text, or decoded base64 fields to an allowed local folder |
 
 ---
 
-## Documentation
+## 📚 Documentation
 
-| Guide | What it covers |
+| Guide | What you will find inside |
 |---|---|
-| **[Inspector Guide](docs/inspector.md)** | Enable the local UI, open the right MCP session, review agent timelines & HTTP traffic, copy payloads/cURL, and troubleshoot |
-| **[MCP Client Setup](docs/clients.md)** | Exact config paths, formats, and setup commands for 9 MCP clients |
-| **[Configuration Guide](docs/configuration.md)** | Multi-service & multi-environment setups, protected specs/`$ref`s, TLS, `network.allow`, operation filters, file roots, and limits |
-| **[Authentication Guide](docs/authentication.md)** | Static tokens/keys/Basic auth, `fromEnv`/`fromFile` secrets, multi-account profiles, login & 401 refresh recipes, and OTP/SSO sessions |
-| **[Usage, Data Boundary & Troubleshooting](docs/reference.md)** | Request body shapes, negative testing, reading/exporting large responses, search & aliases, privacy/trace details, and error codes |
-| **[Configuration Cookbook](examples/config.example.yaml)** | Copy-ready YAML recipes for every supported scenario (validated against [`config.schema.json`](config.schema.json)) |
-| **[Development & Release](docs/development.md)** | Building from source, running tests and the Inspector harness, verifying tarballs, and publishing |
+| **[🔎 Inspector Guide](docs/inspector.md)** | Turn on the local web UI, open your active session, inspect timelines and HTTP payloads, copy cURL, and fix common issues |
+| **[🛠️ MCP Client Setup](docs/clients.md)** | Config file paths, JSON/TOML snippets, and CLI commands for 9 MCP clients |
+| **[⚙️ Configuration Guide](docs/configuration.md)** | Multi-service setups, protected specs and `$ref`s, TLS, `network.allow`, operation filters, file roots, and limits |
+| **[🔐 Authentication Guide](docs/authentication.md)** | Bearer/Basic/API keys, `fromEnv`/`fromFile` secrets, multi-account profiles, login & 401 refresh recipes, and OTP/SSO sessions |
+| **[📖 Usage, Data Boundary & Troubleshooting](docs/reference.md)** | Request body formats, negative testing, reading/exporting large responses, search ranking & aliases, privacy boundary, and error codes |
+| **[🧪 Configuration Cookbook](examples/config.example.yaml)** | Copy-ready YAML recipes for every supported setup (validated against [`config.schema.json`](config.schema.json)) |
+| **[🧱 Development & Release](docs/development.md)** | Building from source, running tests and the Inspector harness, verifying packages, and publishing |
 
 ---
 
-## Alternative installs & package info
+## 📦 Alternative installs & package details
 
-- **Global install:** `npm install -g @nhan7777/openapi-swagger-mcp@0.1.5` (command: `openapi-swagger-mcp`). Always include the `@nhan7777/` scope—the unscoped `openapi-swagger-mcp` package on npm is an unrelated project.
-- **Registry:** Listed in the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp) (`io.github.nhan7777/openapi-swagger-mcp`). All execution happens locally on your machine; never upload private configs or tokens to third-party marketplaces.
-- **License:** MIT. Third-party dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **Global install:** `npm install -g @nhan7777/openapi-swagger-mcp@0.1.5` (binary: `openapi-swagger-mcp`). Always include the `@nhan7777/` scope; the unscoped `openapi-swagger-mcp` package on npm is a different project.
+- **Official MCP Registry:** Published as `io.github.nhan7777/openapi-swagger-mcp` on the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nhan7777%2Fopenapi-swagger-mcp). Everything runs locally on your machine; never upload private configs or tokens to third-party web hosts.
+- **License:** MIT. Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
